@@ -1,20 +1,23 @@
 import numpy as np
-from collision import is_in_collision
 
 class RRTPlanner:
-    def __init__(self, robot, joint_limits, step_size=0.5, max_iter=500, goal_sample_rate=0.3, n_steps=10):
+    def __init__(self, robot, joint_limits, collison_checker, obstacle_detector, step_size=0.1, max_iter=1000, goal_sample_rate=0.4, n_steps=10):
         self.robot = robot
         self.joint_limits = np.array(joint_limits)
+        self.collion_checker = collison_checker
+        self.obstacle_detector = obstacle_detector
+        self.boxes_3d = self.obstacle_detector.get_obstacle()
         self.step_size = step_size
         self.max_iter = max_iter
         self.goal_sample_rate = goal_sample_rate
         self.n_steps = n_steps
 
-    def sample_q(self, end_q):
+    def sample_q(self, end_q, start_q):
         if np.random.rand() < self.goal_sample_rate:
             return end_q
-        lows, highs = self.joint_limits[:, 0], self.joint_limits[:, 1]
-        return np.random.uniform(lows, highs)
+        bias = np.random.rand() * (end_q - start_q)
+        candidate = start_q + bias + 0.1 * np.random.randn(len(start_q))
+        return np.clip(candidate, self.joint_limits[:, 0], self.joint_limits[:, 1])
 
     def ee_dist(self, q1, q2):
         p1 = self.robot.forward_kinematics(q1)
@@ -26,14 +29,42 @@ class RRTPlanner:
         return int(np.argmin(dists))
 
     def is_within_limits(self, q):
-        return np.all((q >= self.joint_limits[:, 0]) & (q <= self.joint_limits[:, 1]))
+        def normalize_angle(angle):
+            return angle % (2 * np.pi)
+
+        def is_angle_within_limit(angle, low, high):
+            angle = normalize_angle(angle)
+            low = normalize_angle(low)
+            high = normalize_angle(high)
+            if low <= high:
+                return low <= angle <= high
+            else:
+                return angle >= low or angle <= high
+
+        for i in range(len(q)):
+            if not is_angle_within_limit(q[i], self.joint_limits[i, 0], self.joint_limits[i, 1]):
+                return False
+        return True
 
     def collision_check_line(self, q1, q2):
         for alpha in np.linspace(0, 1, self.n_steps):
             q_interp = q1 + alpha * (q2 - q1)
             if not self.is_within_limits(q_interp):
+                print(f"Joint limits exceeded at {q_interp}")
                 return True
-            if is_in_collision(q_interp):
+            if self.collion_checker.self_collision(q_interp):
+                return True
+        return False
+    
+    def obstacle_collision_check(self, q):
+        if self.boxes_3d is None:
+            return False
+        for box in self.boxes_3d:
+            box_min, box_max = box
+            box_min = np.array(box_min)
+            box_max = np.array(box_max)
+            joint_positions = self.obstacle_detector.get_joint_positions(q)
+            if np.any(joint_positions < box_min) or np.any(joint_positions > box_max):
                 return True
         return False
 
@@ -49,7 +80,7 @@ class RRTPlanner:
         
         step_vector = direction / length * self.step_size
         q_new = q_near + step_vector
-        if not self.is_within_limits(q_new) or is_in_collision(q_new):
+        if not self.is_within_limits(q_new) or self.collion_checker.self_collision(q_new):
             return None
         return q_new
 
@@ -75,10 +106,25 @@ class RRTPlanner:
         start_q = np.array(start_q)
         end_q = np.array(end_q)
 
+        # Handle 3D input (xyz position)
+        if start_q.shape[0] == 3:
+            ik_start = self.robot.inverse_kinematics(start_q)
+            print(f"IK start: {ik_start}")
+            if ik_start is None:
+                raise ValueError("IK failed for start position")
+            start_q = np.array(ik_start)
+
+        if end_q.shape[0] == 3:
+            ik_end = self.robot.inverse_kinematics(end_q)
+            print(f"IK end: {ik_end}")
+            if ik_end is None:
+                raise ValueError("IK failed for end position")
+            end_q = np.array(ik_end)
+
         tree = [{'q': start_q, 'parent': None}]
 
         for _ in range(self.max_iter):
-            q_rand = self.sample_q(end_q)
+            q_rand = self.sample_q(end_q, start_q)
             idx_near = self.nearest_index(tree, q_rand)
             q_near = tree[idx_near]['q']
             
@@ -88,8 +134,9 @@ class RRTPlanner:
 
             tree.append({'q': q_new, 'parent': idx_near})
 
-            if self.ee_dist(q_new, end_q) < self.step_size:
+            if self.ee_dist(q_new, end_q) < self.step_size * 5:
                 if self.collision_check_line(q_new, end_q):
+                    print("Collision detected at end point.")
                     continue
                 tree.append({'q': end_q, 'parent': len(tree) - 1})
                 path = []
@@ -102,6 +149,21 @@ class RRTPlanner:
                 path = self.shortcut_path(path)
 
                 return path
-
+            
+        for i in reversed(range(len(tree))):
+            q_node = tree[i]['q']
+            if not self.collision_check_line(q_node, end_q):
+                tree.append({'q': end_q, 'parent': i})
+                path = []
+                idx = len(tree) - 1
+                while idx is not None:
+                    path.append(tree[idx]['q'])
+                    idx = tree[idx]['parent']
+                path.reverse()
+                path = self.shortcut_path(path)
+                return path
+            else:
+                print(f"Collision detected at node {i}.")
+            
         print("Failed to find a path.")
         return None

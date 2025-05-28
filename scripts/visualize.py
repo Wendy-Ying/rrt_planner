@@ -20,8 +20,6 @@ def plot_cartesian_trajectory(path, robot):
 
     for q in path:
         joint_positions = robot.get_joint_positions(q)
-        print(f"q: {q}")
-        print(f"Joint Positions: {joint_positions}")
         ee_positions.append(joint_positions[-1])
 
         ax.plot(joint_positions[:, 0],
@@ -35,6 +33,10 @@ def plot_cartesian_trajectory(path, robot):
             ee_positions[:, 2],
             '-o', color='red', label='End Effector Trajectory', linewidth=2)
 
+    ax.set_xlim([-0.6, 0.6])
+    ax.set_ylim([-0.6, 0.6])
+    ax.set_zlim([-0.1, 1.1])
+    
     ax.legend()
     ax.grid(True)
     plt.tight_layout()

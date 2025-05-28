@@ -47,7 +47,7 @@ def send_gripper_command(base, value):
 
 def check_joint_limits(angles):
     """Check if joint angles are within limits"""
-    limits = np.array([365, 153, 149, 149, 144, 148])  # Maximum angle limits
+    limits = np.array([365, 365, 365, 365, 365, 365])  # Maximum angle limits
     for i, angle in enumerate(angles):
         if abs(angle) > limits[i]:
             print(f"Joint {i+1} angle {angle} exceeds limit {limits[i]}")

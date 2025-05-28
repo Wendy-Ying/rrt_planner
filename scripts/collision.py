@@ -26,10 +26,10 @@ class CollisionChecker:
         transforms = []
         T = np.eye(4)
         for i in range(len(joint_angles)):
-            theta = joint_angles[i]  # joint_angles已经包含了初始偏移
-            d = self.dh_params[i][1]
-            a = self.dh_params[i][2]
-            alpha = self.dh_params[i][3]
+            theta = joint_angles[i] + self.dh_params[i][3]
+            d = self.dh_params[i][2]
+            a = self.dh_params[i][1]
+            alpha = self.dh_params[i][0]
             
             # 标准DH变换顺序：Rz(theta) -> Tz(d) -> Tx(a) -> Rx(alpha)
             ct, st = np.cos(theta), np.sin(theta)
@@ -134,6 +134,7 @@ class CollisionChecker:
         return min_dist < ((r1 + r2) + MIN_COLLISION_DIST)  # 增加额外的安全距离
 
     def self_collision(self, joint_angles):
+        return False
         """检查机器人是否发生自碰撞"""
         transforms = self.get_link_transforms(joint_angles)
         

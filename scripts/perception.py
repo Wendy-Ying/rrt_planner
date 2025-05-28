@@ -100,6 +100,4 @@ def detect(pipeline, align):
         obj, goal = process_frame(color_image, depth_frame)
 
         if obj is not None and goal is not None:
-            print("Object:", obj)
-            print("Goal:", goal)
             return obj, goal
