@@ -1,126 +1,108 @@
 import numpy as np
 from collision import is_in_collision
 
-class Node:
-    def __init__(self, q, parent=None, cost=0.0):
-        self.q = q  # Joint angles
-        self.parent = parent
-        self.cost = cost  # Cost from start to this node
-
-class RRTStar:
-    def __init__(self, joint_limits, dh_table,
-                 step_size=0.1, max_iter=1000, radius=0.5, use_cartesian_cost=False):
-        self.joint_limits = joint_limits  # list of (low, high) for each joint
-        self.dh_table = dh_table  # (n_joints x 4) -> [theta, d, a, alpha]
+class RRTPlanner:
+    def __init__(self, robot, joint_limits, step_size=0.5, max_iter=500, goal_sample_rate=0.3, n_steps=10):
+        self.robot = robot
+        self.joint_limits = np.array(joint_limits)
         self.step_size = step_size
         self.max_iter = max_iter
-        self.radius = radius
-        self.use_cartesian_cost = use_cartesian_cost
+        self.goal_sample_rate = goal_sample_rate
+        self.n_steps = n_steps
 
-    def sample(self):
-        if np.random.rand() < 0.1:  # 10% goal bias
-            return self.goal
-        return np.array([np.random.uniform(low, high) for (low, high) in self.joint_limits])
+    def sample_q(self, end_q):
+        if np.random.rand() < self.goal_sample_rate:
+            return end_q
+        lows, highs = self.joint_limits[:, 0], self.joint_limits[:, 1]
+        return np.random.uniform(lows, highs)
 
-    def nearest(self, q_rand):
-        return min(self.nodes, key=lambda node: np.linalg.norm(node.q - q_rand))
+    def ee_dist(self, q1, q2):
+        p1 = self.robot.forward_kinematics(q1)
+        p2 = self.robot.forward_kinematics(q2)
+        return np.linalg.norm(p1 - p2)
+
+    def nearest_index(self, tree, q_rand):
+        dists = [self.ee_dist(node['q'], q_rand) for node in tree]
+        return int(np.argmin(dists))
+
+    def is_within_limits(self, q):
+        return np.all((q >= self.joint_limits[:, 0]) & (q <= self.joint_limits[:, 1]))
+
+    def collision_check_line(self, q1, q2):
+        for alpha in np.linspace(0, 1, self.n_steps):
+            q_interp = q1 + alpha * (q2 - q1)
+            if not self.is_within_limits(q_interp):
+                return True
+            if is_in_collision(q_interp):
+                return True
+        return False
 
     def steer(self, q_near, q_rand):
         direction = q_rand - q_near
-        norm = np.linalg.norm(direction)
-        if norm == 0:
-            return q_near
-        direction = direction / norm
-        q_new = q_near + direction * min(self.step_size, norm)
-        return self.wrap_angles(q_new)
+        length = np.linalg.norm(direction)
+        if length == 0:
+            return None
+        if length <= self.step_size:
+            if self.collision_check_line(q_near, q_rand):
+                return None
+            return q_rand
+        
+        step_vector = direction / length * self.step_size
+        q_new = q_near + step_vector
+        if not self.is_within_limits(q_new) or is_in_collision(q_new):
+            return None
+        return q_new
 
-    def wrap_angles(self, q):
-        # Ensure angles are wrapped to [0, 2pi] if applicable
-        wrapped = []
-        for i, angle in enumerate(q):
-            low, high = self.joint_limits[i]
-            if high > 2 * np.pi - 0.1:  # consider this a revolute joint
-                wrapped.append(angle % (2 * np.pi))
-            else:
-                wrapped.append(np.clip(angle, low, high))
-        return np.array(wrapped)
+    def shortcut_path(self, path):
+        if len(path) <= 2:
+            return path
+        
+        path = path.copy()
+        max_trials = 100
+        trial = 0
 
-    def get_near_nodes(self, q_new):
-        return [node for node in self.nodes if np.linalg.norm(node.q - q_new) <= self.radius]
+        while trial < max_trials:
+            if len(path) <= 2:
+                break
+            i = np.random.randint(0, len(path) - 2)
+            j = np.random.randint(i + 2, len(path))
+            if not self.collision_check_line(path[i], path[j]):
+                path = path[:i+1] + path[j:]
+            trial += 1
+        return path
 
-    def forward_kinematics(self, q):
-        """Compute end effector pose from joint angles using D-H parameters"""
-        T = np.eye(4)
-        for i in range(len(q)):
-            theta, d, a, alpha = q[i], self.dh_table[i][1], self.dh_table[i][2], self.dh_table[i][3]
-            ct, st = np.cos(theta), np.sin(theta)
-            ca, sa = np.cos(alpha), np.sin(alpha)
-            A = np.array([
-                [ct, -st * ca,  st * sa, a * ct],
-                [st,  ct * ca, -ct * sa, a * st],
-                [0,       sa,      ca,      d],
-                [0,        0,       0,      1]
-            ])
-            T = T @ A
-        return T
+    def plan(self, start_q, end_q):
+        start_q = np.array(start_q)
+        end_q = np.array(end_q)
 
-    def cartesian_distance(self, q1, q2):
-        p1 = self.forward_kinematics(q1)[:3, 3]
-        p2 = self.forward_kinematics(q2)[:3, 3]
-        return np.linalg.norm(p1 - p2)
+        tree = [{'q': start_q, 'parent': None}]
 
-    def cost(self, from_node, to_q):
-        if self.use_cartesian_cost:
-            return from_node.cost + self.cartesian_distance(from_node.q, to_q)
-        else:
-            return from_node.cost + np.linalg.norm(from_node.q - to_q)
-
-    def plan(self, start, goal):
-        self.start = Node(start)
-        self.goal = np.array(goal)
-        self.nodes = [self.start]
-        for i in range(self.max_iter):
-            q_rand = self.sample()
-            nearest_node = self.nearest(q_rand)
-            q_new = self.steer(nearest_node.q, q_rand)
-
-            if is_in_collision(q_new):
+        for _ in range(self.max_iter):
+            q_rand = self.sample_q(end_q)
+            idx_near = self.nearest_index(tree, q_rand)
+            q_near = tree[idx_near]['q']
+            
+            q_new = self.steer(q_near, q_rand)
+            if q_new is None:
                 continue
 
-            near_nodes = self.get_near_nodes(q_new)
+            tree.append({'q': q_new, 'parent': idx_near})
 
-            # Choose best parent
-            min_cost = self.cost(nearest_node, q_new)
-            best_parent = nearest_node
-            for node in near_nodes:
-                if not is_in_collision(q_new):
-                    c = self.cost(node, q_new)
-                    if c < min_cost:
-                        best_parent = node
-                        min_cost = c
-
-            new_node = Node(q_new, best_parent, min_cost)
-            self.nodes.append(new_node)
-
-            # Rewire
-            for node in near_nodes:
-                if node == best_parent:
+            if self.ee_dist(q_new, end_q) < self.step_size:
+                if self.collision_check_line(q_new, end_q):
                     continue
-                c = self.cost(new_node, node.q)
-                if c < node.cost and not is_in_collision(node.q):
-                    node.parent = new_node
-                    node.cost = c
+                tree.append({'q': end_q, 'parent': len(tree) - 1})
+                path = []
+                idx = len(tree) - 1
+                while idx is not None:
+                    path.append(tree[idx]['q'])
+                    idx = tree[idx]['parent']
+                path.reverse()
 
-            if np.linalg.norm(q_new - self.goal) < self.step_size:
-                print(f"Goal reached in {i} iterations.")
-                return self.extract_path(new_node)
+                # 路径简化
+                path = self.shortcut_path(path)
+
+                return path
 
         print("Failed to find a path.")
         return None
-
-    def extract_path(self, node):
-        path = []
-        while node:
-            path.append(node.q)
-            node = node.parent
-        return path[::-1]

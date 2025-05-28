@@ -1,6 +1,6 @@
 import numpy as np
 from perception import init_realsense, detect
-from rrt import RRTStar
+from rrt import RRTPlanner
 from kinematics import NLinkArm
 from optimize import BSplineOptimizer
 from visualize import plot_cartesian_trajectory
@@ -12,21 +12,21 @@ if __name__ == "__main__":
     joint_limits = [(0, 2 * np.pi)] * 6
 
     dh_params = [
-        [0, 0.1, 0, -np.pi/2],
-        [0, 0, 0.5, 0],
-        [0, 0, 0.3, 0],
-        [0, 0.2, 0, -np.pi/2],
-        [0, 0, 0, np.pi/2],
-        [0, 0.1, 0, 0]
+        [0, 0, 243.3/1000, 0],
+        [np.pi/2, 0, 10/1000, np.pi/2],
+        [np.pi, 280/1000, 0, np.pi/2],
+        [np.pi/2, 0, 245/1000, np.pi/2],
+        [np.pi/2, 0, 57/1000, 0],
+        [-np.pi/2, 0, 235/1000, -np.pi/2]
     ]
     robot = NLinkArm(dh_params)
 
-    rrt_star = RRTStar(joint_limits, dh_params)
-    optimizer = BSplineOptimizer(degree=3, num_points=200)
+    rrt = RRTPlanner(robot, joint_limits)
+    optimizer = BSplineOptimizer(robot, degree=3, num_points=20)
 
     obj, goal = detect(pipeline, align)
 
-    path = rrt_star.plan(start_q, goal_q)
+    path = rrt.plan(start_q, goal_q)
 
     if path:
         smooth_path = optimizer.optimize(path)
