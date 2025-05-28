@@ -14,26 +14,25 @@ from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 
 if __name__ == "__main__":
     pipeline, align = init_realsense()
-    start_q = np.array([357, 20, 150, 272, 320, 273]) / 180 * np.pi
-    goal_q = np.array([0, 344, 75, 0, 300, 0]) / 180 * np.pi
+    start_q = np.array([0, 0, 0, 0, 0, 0]) / 180 * np.pi
+    goal_q = np.array([10, 20, 0, 0, 0, 0]) / 180 * np.pi
     joint_limits = [(0, 2 * np.pi)] * 6
 
     dh_params = [
-
-        # [theta,      d,      a,          alpha]
-        [0,           0,       0.2433,     0],          # Joint 1
-        [math.pi/2,   0,       0.01,       math.pi/2],  # Joint 2
-        [math.pi,     0.28,    0,          math.pi/2],  # Joint 3
-        [math.pi/2,   0,       0.245,      math.pi/2],  # Joint 4
-        [math.pi/2,   0,       0.057,      0],          # Joint 5
-        [-math.pi/2,  0,       0.235,     -math.pi/2]   # Joint 6
+        [0.0,        0.0 / 1000,   243.3 / 1000,  0.0],
+        [np.pi/2,    0.0 / 1000,    30.0 / 1000,  np.pi/2],
+        [np.pi,    280.0 / 1000,    20.0 / 1000,  np.pi/2],
+        [np.pi/2,    0.0 / 1000,   245.0 / 1000,  np.pi/2],
+        [np.pi/2,    0.0 / 1000,    57.0 / 1000,  0.0],
+        [-np.pi/2,   0.0 / 1000,   235.0 / 1000, -np.pi/2]
     ]
+
     robot = NLinkArm(dh_params)
     
     collision_checker = CollisionChecker(dh_params)
 
     rrt = RRTPlanner(robot, joint_limits)
-    optimizer = BSplineOptimizer(robot, degree=3, num_points=20)
+    optimizer = BSplineOptimizer(robot, degree=3, num_points=3)
 
     obj, goal = detect(pipeline, align)
 
