@@ -17,7 +17,7 @@ def init_realsense():
     depth_scale = depth_sensor.get_depth_scale()
 
     align = rs.align(rs.stream.color)
-    return pipeline, align, depth_scale
+    return pipeline, align
 
 def set_aruco():
     """Set up ArUco detector."""
@@ -53,8 +53,9 @@ def camera_to_world(camera_point):
 
 # --------------- Frame Processing ------------------
 
-def process_frame(color_image, depth_frame, detector, depth_scale):
+def process_frame(color_image, depth_frame):
     """Detect ArUco markers and return obj/goal world coordinates."""
+    detector = set_aruco()
     gray = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
     gray = cv2.convertScaleAbs(gray, alpha=1.2, beta=-30)
 
@@ -79,44 +80,26 @@ def process_frame(color_image, depth_frame, detector, depth_scale):
             elif marker_id == 2:
                 obj = world_coords
 
-            cv2.circle(color_image, (cx, cy), 5, (0, 0, 255), -1)
+    if obj is not None and goal is not None:
+        return obj, goal
+    else:
+        return None, None
 
-    return color_image, obj, goal
+def detect(pipeline, align):
+    obj, goal = None, None
+    while obj is None or goal is None:
+        frames = pipeline.wait_for_frames()
+        aligned = align.process(frames)
+        depth_frame = aligned.get_depth_frame()
+        color_frame = aligned.get_color_frame()
 
-# --------------- Main Loop ------------------
+        if not depth_frame or not color_frame:
+            continue
 
-def detect_loop():
-    """Main detection loop."""
-    pipeline, align, depth_scale = init_realsense()
-    detector = set_aruco()
+        color_image = np.asanyarray(color_frame.get_data())
+        obj, goal = process_frame(color_image, depth_frame)
 
-    try:
-        while True:
-            frames = pipeline.wait_for_frames()
-            aligned = align.process(frames)
-            depth_frame = aligned.get_depth_frame()
-            color_frame = aligned.get_color_frame()
-
-            if not depth_frame or not color_frame:
-                continue
-
-            color_image = np.asanyarray(color_frame.get_data())
-            color_image, obj, goal = process_frame(color_image, depth_frame, detector, depth_scale)
-
-            cv2.imshow("Color Image", color_image)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-
-            # 可选：在此处处理 obj 和 goal，例如：
-            if obj is not None and goal is not None:
-                print("Object:", obj)
-                print("Goal:", goal)
-
-    finally:
-        pipeline.stop()
-        cv2.destroyAllWindows()
-
-# --------------- Entry Point ------------------
-
-if __name__ == "__main__":
-    detect_loop()
+        if obj is not None and goal is not None:
+            print("Object:", obj)
+            print("Goal:", goal)
+            return obj, goal
