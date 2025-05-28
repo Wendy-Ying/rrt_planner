@@ -10,12 +10,12 @@ class BSplineOptimizer:
     def optimize(self, path):
         # get joint positions
         ee_points = [self.arm.forward_kinematics(q) for q in path]
-        ee_points = np.array(ee_points).T  # shape: (3, N)
+        ee_points = np.array(ee_points).T
 
         # bspline interpolation
         tck, _ = splprep(ee_points, s=0, k=min(self.degree, len(path) - 1))
         u_fine = np.linspace(0, 1, self.num_points)
-        smoothed_ee = splev(u_fine, tck)  # 结果 shape: (3, num_points)
+        smoothed_ee = splev(u_fine, tck)
         smoothed_ee = np.array(smoothed_ee).T
 
         # inverse kinematics for each point

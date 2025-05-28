@@ -99,7 +99,6 @@ class RRTPlanner:
                     idx = tree[idx]['parent']
                 path.reverse()
 
-                # 路径简化
                 path = self.shortcut_path(path)
 
                 return path

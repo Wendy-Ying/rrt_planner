@@ -4,7 +4,7 @@ class NLinkArm:
     def __init__(self, dh_params):
         self.dh_params = dh_params
 
-    def dh_transform(self, alpha, a, d, theta):
+    def dh_transform(self, theta, d, a, alpha):
         return np.array([
             [np.cos(theta), -np.sin(theta)*np.cos(alpha),  np.sin(theta)*np.sin(alpha), a*np.cos(theta)],
             [np.sin(theta),  np.cos(theta)*np.cos(alpha), -np.cos(theta)*np.sin(alpha), a*np.sin(theta)],

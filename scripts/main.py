@@ -8,6 +8,10 @@ from kinematics import NLinkArm
 from optimize import BSplineOptimizer
 from visualize import plot_cartesian_trajectory
 
+import pid_angle_control
+import utilities
+from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
+
 if __name__ == "__main__":
     pipeline, align = init_realsense()
     start_q = np.array([357, 20, 150, 272, 320, 273]) / 180 * np.pi
@@ -36,19 +40,12 @@ if __name__ == "__main__":
     path = rrt.plan(start_q, goal_q)
 
     if path:
-        # 优化路径
         smooth_path = optimizer.optimize(path)
         
-        # 显示路径信息
         for i, q in enumerate(smooth_path):
             print(f"Step {i}: {q}")
         
-        # 执行优化后的路径
-        try:
-            import pid_angle_control
-            import utilities
-            from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
-            
+        try:            
             print("Executing optimized path...")
             args = utilities.parseConnectionArguments()
             with utilities.DeviceConnection.createTcpConnection(args) as router:
@@ -62,7 +59,6 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Error executing path: {str(e)}")
         
-        # 显示轨迹可视化
         plot_cartesian_trajectory(smooth_path, robot)
     
     pipeline.stop()
