@@ -95,10 +95,6 @@ class CollisionChecker:
         # 最小碰撞距离阈值（米）
         MIN_COLLISION_DIST = 0.015  # 15mm的安全距离
 
-        # 首先检查是否平行
-        if self.check_link_direction(p1, p2, p3, p4):
-            return False  # 平行的连杆不太可能碰撞
-
         # 计算两线段间最短距离
         u = p2 - p1
         v = p4 - p3
@@ -131,7 +127,7 @@ class CollisionChecker:
         
         # 检查最短距离是否小于安全距离
         min_dist = np.linalg.norm(p_c1 - p_c2)
-        return min_dist < ((r1 + r2) + MIN_COLLISION_DIST)  # 增加额外的安全距离
+        return min_dist < ((r1 + r2) + MIN_COLLISION_DIST) 
 
     def self_collision(self, joint_angles):
         """检查机器人是否发生自碰撞"""
