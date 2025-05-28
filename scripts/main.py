@@ -5,9 +5,9 @@ from optimize import BSplineOptimizer
 from visualize import plot_cartesian_trajectory
 
 if __name__ == "__main__":
-    start_q = [0, 0, 0, 0, 0, 0]
-    goal_q = [np.pi/2, -np.pi/4, np.pi/3, 0, np.pi/6, -np.pi/2]
-    joint_limits = [(-np.pi, np.pi)] * 6
+    start_q = np.array([357, 20, 150, 272, 320, 273]) / 180 * np.pi
+    goal_q = np.array([0, 344, 75, 0, 300, 0]) / 180 * np.pi
+    joint_limits = [(0, 2 * np.pi)] * 6
 
     dh_params = [
         [0, 0.1, 0, -np.pi/2],
@@ -19,10 +19,10 @@ if __name__ == "__main__":
     ]
     robot = NLinkArm(dh_params)
 
-    rrt_star = RRTStar(start_q, goal_q, joint_limits)
+    rrt_star = RRTStar(joint_limits, dh_params)
     optimizer = BSplineOptimizer(degree=3, num_points=200)
 
-    path = rrt_star.plan()
+    path = rrt_star.plan(start_q, goal_q)
 
     if path:
         smooth_path = optimizer.optimize(path)
