@@ -55,7 +55,7 @@ def main():
             print(f"Step {i}: {q}")
         with utilities.DeviceConnection.createTcpConnection(args) as router:
             base = BaseClient(router)
-            success = pid_angle_control.execute_path(base, smooth_path)
+            success = pid_angle_control.execute_path(base, smooth_path, is_first_motion=True)
             if not success:
                 print("Path execution failed")
             else:

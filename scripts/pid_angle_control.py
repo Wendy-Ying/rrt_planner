@@ -82,6 +82,8 @@ def send_gripper_command(base, value):
     finger.finger_identifier = 1
     finger.value = max(0.0, min(1.0, value))  # Ensure value is between 0 and 1
     base.SendGripperCommand(gripper_command)
+    time.sleep(1.0) 
+     
 
 def check_joint_limits(angles):
     """Check if joint angles are within limits"""
@@ -148,7 +150,7 @@ def move_to_angles(base, target_angles, gripper_value=0.0, is_endpoint=False):
     
     try:
         # Control gripper
-        send_gripper_command(base, gripper_value)
+        # send_gripper_command(base, gripper_value)
         
         # Joint control loop
         while True:
