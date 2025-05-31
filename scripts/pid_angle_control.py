@@ -21,6 +21,7 @@ def calculate_angle_error(target, current):
     # 先将两个角度都规范化到[-180, 180)范围
     target = warp_to_range(target)
     current = warp_to_range(current)
+
     # 计算初始误差
     error = target - current
     # 确保误差在[-180, 180)范围内
@@ -119,7 +120,7 @@ def move_to_angles(base, target_angles, gripper_value=0.0):
             for i in range(6):
                 speed = pids[i].control(target_angles[i], current_angles[i])
                 speeds.append(speed)
-                errors.append(abs(target_angles[i] - current_angles[i]))
+                errors.append(abs(calculate_angle_error(target_angles[i], current_angles[i])))
             
             # Send velocity commands
             joint_speeds = Base_pb2.JointSpeeds()
@@ -133,10 +134,10 @@ def move_to_angles(base, target_angles, gripper_value=0.0):
             
             # Print status
             status = "Joints: " + ", ".join([f"{i+1}:{angle:.1f}" for i, angle in enumerate(current_angles)])
-            print(f"{status} | Errors: {max(errors):.2f}", flush=True)
+            print(f"{status} | Errors: {max(errors):.2f} | Target: {[f'{a:.1f}' for a in target_angles]} | Current: {[f'{a:.1f}' for a in current_angles]}", flush=True)
             
             # Check if all joints reached target (error less than 1 degree)
-            if all(error < 1.0 for error in errors):
+            if all(error < 0.2 for error in errors):
                 print("Target position reached")
                 return True
                 
