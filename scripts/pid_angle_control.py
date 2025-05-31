@@ -7,21 +7,31 @@ import argparse
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 from kortex_api.autogen.messages import Base_pb2
 
+def calculate_angle_error(target, current):
+    error = target - current
+    if error > 180:
+        error -= 360
+    elif error < -180:
+        error += 360
+    return error
+
 class PIDController:
-    def __init__(self, Kp, Ki=0.0, Kd=0.0):
+    def __init__(self, Kp, Ki=0.0, Kd=0.0, max_i=10.0, max_output=20.0):
         self.Kp = Kp
         self.Ki = Ki
         self.Kd = Kd
         self.error_sum = 0
         self.error_last = 0
+        self.max_i = max_i          # 积分限幅
+        self.max_output = max_output # 输出限幅
 
     def control(self, ref, fdb):
-        error = ref - fdb
-        self.error_sum = self.error_sum + error
+        error = calculate_angle_error(ref, fdb)
+        self.error_sum = np.clip(self.error_sum + error, -self.max_i, self.max_i)
         error_diff = error - self.error_last
         self.error_last = error
-        control = self.Kp * error + self.Ki * self.error_sum + self.Kd * error_diff
-        return control
+        output = self.Kp * error + self.Ki * self.error_sum + self.Kd * error_diff
+        return np.clip(output, -self.max_output, self.max_output)
 
 def warp_to_range(angle, min_value=-180, max_value=180):
     """Normalize angle to specified range"""
@@ -74,12 +84,12 @@ def move_to_angles(base, target_angles, gripper_value=0.0):
 
     # Initialize PID controllers for each joint with specific gains
     pids = [
-        PIDController(Kp=2.0, Ki=0.0, Kd=0.1),  # Joint 1
-        PIDController(Kp=1.0, Ki=0.0, Kd=0.1),  # Joint 2
-        PIDController(Kp=1.0, Ki=0.0, Kd=0.1),  # Joint 3
-        PIDController(Kp=1.5, Ki=0.0, Kd=0.1),  # Joint 4
-        PIDController(Kp=1.0, Ki=0.0, Kd=0.1),  # Joint 5
-        PIDController(Kp=4.0, Ki=0.0, Kd=0.1)   # Joint 6
+        PIDController(Kp=1.5, Ki=0.1, Kd=0.2, max_i=10.0, max_output=20.0),  # Joint 1
+        PIDController(Kp=0.8, Ki=0.1, Kd=0.2, max_i=10.0, max_output=20.0),  # Joint 2
+        PIDController(Kp=0.8, Ki=0.1, Kd=0.2, max_i=10.0, max_output=20.0),  # Joint 3
+        PIDController(Kp=1.0, Ki=0.1, Kd=0.2, max_i=10.0, max_output=20.0),  # Joint 4
+        PIDController(Kp=0.8, Ki=0.1, Kd=0.2, max_i=10.0, max_output=20.0),  # Joint 5
+        PIDController(Kp=2.0, Ki=0.1, Kd=0.2, max_i=10.0, max_output=20.0)   # Joint 6
     ]
     
     # Normalize target angles
@@ -119,7 +129,7 @@ def move_to_angles(base, target_angles, gripper_value=0.0):
             print(f"{status} | Errors: {max(errors):.2f}", flush=True)
             
             # Check if all joints reached target (error less than 1 degree)
-            if all(error < 0.3 for error in errors):
+            if all(error < 1.0 for error in errors):
                 print("Target position reached")
                 return True
                 
