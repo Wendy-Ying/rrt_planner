@@ -31,11 +31,11 @@ if __name__ == "__main__":
     robot = NLinkArm(dh_params, joint_limits)
     
     collision_checker = CollisionChecker(dh_params)
-    obstacle_detector = ObstacleDetector(pipeline, align)
-    obstacle = obstacle_detector.get_obstacle(visualize=False)
-    print(f"Obstacle: {obstacle}")
+    detector = ObstacleDetector(pipeline, align)
+    boxes_3d = detector.get_obstacle(visualize=False)
+    print(f"box: {boxes_3d}")
 
-    rrt = RRTPlanner(robot, joint_limits, collision_checker, obstacle)
+    rrt = RRTPlanner(robot, joint_limits, collision_checker, boxes_3d)
     optimizer = BSplineOptimizer(robot, degree=3, num_points=3)
 
     obj, goal = detect(pipeline, align)

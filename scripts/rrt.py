@@ -59,10 +59,12 @@ class RRTPlanner:
     def obstacle_collision_check(self, q):
         if self.boxes_3d is None:
             return False
-        boxes = [self.boxes_3d] if isinstance(self.boxes_3d, tuple) else self.boxes_3d
-        for i, (pt_min, pt_max) in enumerate(self.boxes_3d):
+        for i, (x_min, y_min, z_min, x_max, y_max, z_max) in enumerate(self.boxes_3d):
             joint_positions = self.robot.get_joint_positions(q)
-            if np.any(joint_positions < pt_min) or np.any(joint_positions > pt_max):
+            xyz_min = np.array([x_min, y_min, z_min])
+            xyz_max = np.array([x_max, y_max, z_max])
+            if np.any(joint_positions < xyz_min) or np.any(joint_positions > xyz_max):
+                print(f"Collision detected with box {i} at {joint_positions}")
                 return True
         return False
 

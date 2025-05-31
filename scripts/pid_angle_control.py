@@ -134,8 +134,9 @@ def move_to_angles(base, target_angles, gripper_value=0.0):
             
             # Print status
             status = "Joints: " + ", ".join([f"{i+1}:{angle:.1f}" for i, angle in enumerate(current_angles)])
-            print(f"{status} | Errors: {max(errors):.2f} | Target: {[f'{a:.1f}' for a in target_angles]} | Current: {[f'{a:.1f}' for a in current_angles]}", flush=True)
-            
+            print(f"Errors: {max(errors):.2f}", flush=True)
+            print(f"Target: {[f'{a:.1f}' for a in target_angles]}", flush=True)
+            print(f"Current: {[f'{a:.1f}' for a in current_angles]}", flush=True)
             # Check if all joints reached target (error less than 1 degree)
             if all(error < 0.2 for error in errors):
                 print("Target position reached")

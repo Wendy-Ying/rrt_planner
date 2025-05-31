@@ -73,7 +73,7 @@ class ObstacleDetector:
             points_np = np.array(roi_points)
             x_min, y_min, z_min = np.min(points_np, axis=0)
             x_max, y_max, z_max = np.max(points_np, axis=0)
-            boxes_3d.append([(x_min, y_min, z_min), (x_max, y_max, z_max)])
+            boxes_3d.append([x_min, y_min, z_min, x_max, y_max, z_max])
 
             if visualize:
                 cv2.rectangle(color_image, (x, y), (x + bw, y + bh), (255, 0, 0), 2)
@@ -81,22 +81,30 @@ class ObstacleDetector:
                 cv2.putText(color_image, text, (x, y - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
 
-        return boxes_3d if not visualize else boxes_3d, color_image
+        if visualize:
+            return boxes_3d, color_image
+        else:
+            return boxes_3d
 
 
 if __name__ == "__main__":
     pipeline, align = init_realsense()
     detector = ObstacleDetector(pipeline, align)
+    vis_img = None
 
     try:
         while True:
             boxes_3d, vis_img = detector.get_obstacle(visualize=True)
-            for i, (pt_min, pt_max) in enumerate(boxes_3d):
-                print(f"Obstacle {i}: Min={pt_min}, Max={pt_max}")
+            print(boxes_3d)
+            for i, (x_min, y_min, z_min, x_max, y_max, z_max) in enumerate(boxes_3d):
+                print(f"Box {i}: {x_min:.2f},{y_min:.2f},{z_min:.2f} to {x_max:.2f},{y_max:.2f},{z_max:.2f}")
             if vis_img is not None:
                 cv2.imshow("Obstacles", vis_img)
             if cv2.waitKey(1) == 27:
                 break
+    except KeyboardInterrupt:
+        pipeline.stop()
+        cv2.destroyAllWindows()
     finally:
         pipeline.stop()
         cv2.destroyAllWindows()
