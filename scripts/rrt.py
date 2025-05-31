@@ -1,7 +1,7 @@
 import numpy as np
 
 class RRTPlanner:
-    def __init__(self, robot, joint_limits, collison_checker, obstacle, step_size=0.1, max_iter=1000, goal_sample_rate=0.4, n_steps=10):
+    def __init__(self, robot, joint_limits, collison_checker, obstacle, step_size=0.1, max_iter=1000, goal_sample_rate=0.4, n_steps=5):
         self.robot = robot
         self.joint_limits = np.array(joint_limits)
         self.collion_checker = collison_checker
@@ -51,30 +51,44 @@ class RRTPlanner:
             # if not self.is_within_limits(q_interp):
             #     print(f"Joint limits exceeded at {q_interp}")
             #     return True
-            if not self.obstacle_collision_check(q_interp):
+            if self.obstacle_collision_check(q_interp):
                 # print(f"Collision detected with obstacle")
                 return True
-            if not self.cartesian_collision_check(q_interp):
+            if self.cartesian_collision_check(q_interp):
                 # print(f"Collision detected with cartesian")
                 return True
         return False
     
     def cartesian_collision_check(self, q):
         joint_positions = self.robot.get_joint_positions(q)
-        if np.any(joint_positions[:, 2] < 0.2):
+        if np.any(joint_positions[:, 2] < -0.2):
             return True
         return False
 
-    def obstacle_collision_check(self, q):
+    def obstacle_collision_check(self, q, num_interpolation_points=10):
         if len(self.boxes_3d) == 0:
             return False
-        for i, (x_min, y_min, z_min, x_max, y_max, z_max) in enumerate(self.boxes_3d):
-            joint_positions = self.robot.get_joint_positions(q)
-            xyz_min = np.array([x_min, y_min, z_min])
-            xyz_max = np.array([x_max, y_max, z_max])
-            if np.any(joint_positions < xyz_min) or np.any(joint_positions > xyz_max):
-                return True
-        return False
+
+        # 获取7个关节的位置，每个位置是(x, y, z)
+        joint_positions = self.robot.get_joint_positions(q)  # shape: (7, 3)
+
+        # 对每一段连杆进行插值（共6段）
+        for i in range(len(joint_positions) - 1):
+            start = joint_positions[i]
+            end = joint_positions[i + 1]
+
+            # 插值点，包括起点和终点
+            for alpha in np.linspace(0, 1, num_interpolation_points):
+                point = (1 - alpha) * start + alpha * end  # shape: (3,)
+
+                # 检查这个插值点是否落在任意一个障碍物中
+                for x_min, y_min, z_min, x_max, y_max, z_max in self.boxes_3d:
+                    if (x_min <= point[0] <= x_max and
+                        y_min <= point[1] <= y_max and
+                        z_min <= point[2] <= z_max):
+                        return True  # 碰撞
+        return False  # 无碰撞
+
 
     def steer(self, q_near, q_rand):
         direction = q_rand - q_near
@@ -142,7 +156,7 @@ class RRTPlanner:
 
             tree.append({'q': q_new, 'parent': idx_near})
 
-            if self.ee_dist(q_new, end_q) < self.step_size * 5:
+            if self.ee_dist(q_new, end_q) < self.step_size * 10:
                 if self.collision_check_line(q_new, end_q):
                     # print("Collision detected at end point.")
                     continue
