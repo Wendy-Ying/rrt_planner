@@ -92,13 +92,14 @@ def move_to_angles(base, target_angles, gripper_value=0.0):
 
     # Initialize PID controllers for each joint with specific gains
     pids = [
-        PIDController(Kp=1.5, Ki=0.1, Kd=0.2, max_i=10.0, max_output=20.0),  # Joint 1
-        PIDController(Kp=0.8, Ki=0.1, Kd=0.2, max_i=10.0, max_output=20.0),  # Joint 2
-        PIDController(Kp=0.8, Ki=0.1, Kd=0.2, max_i=10.0, max_output=20.0),  # Joint 3
-        PIDController(Kp=1.0, Ki=0.1, Kd=0.2, max_i=10.0, max_output=20.0),  # Joint 4
-        PIDController(Kp=0.8, Ki=0.1, Kd=0.2, max_i=10.0, max_output=20.0),  # Joint 5
-        PIDController(Kp=2.0, Ki=0.1, Kd=0.2, max_i=10.0, max_output=20.0)   # Joint 6
+        PIDController(Kp=2.0, Ki=0.05, Kd=0.1),  # Joint 1
+        PIDController(Kp=1.0, Ki=0.05, Kd=0.1),  # Joint 2
+        PIDController(Kp=1.0, Ki=0.05, Kd=0.1),  # Joint 3
+        PIDController(Kp=1.5, Ki=0.05, Kd=0.1),  # Joint 4
+        PIDController(Kp=1.0, Ki=0.05, Kd=0.1),  # Joint 5
+        PIDController(Kp=4.0, Ki=0.05, Kd=0.1)   # Joint 6
     ]
+    
     
     # Normalize target angles
     target_angles = [warp_to_range(angle) for angle in target_angles]
