@@ -1,7 +1,7 @@
 import numpy as np
 
 class RRTPlanner:
-    def __init__(self, robot, joint_limits, collison_checker, obstacle, step_size=0.1, max_iter=1000, goal_sample_rate=0.4, n_steps=5):
+    def __init__(self, robot, joint_limits, collison_checker, obstacle, step_size=0.01, max_iter=1000, goal_sample_rate=0.2, n_steps=5):
         self.robot = robot
         self.joint_limits = np.array(joint_limits)
         self.collion_checker = collison_checker
@@ -14,8 +14,35 @@ class RRTPlanner:
     def sample_q(self, end_q, start_q):
         if np.random.rand() < self.goal_sample_rate:
             return end_q
+        
+        # elif np.random.rand() < 0.1:
+        #     x_min, y_min, z_min, x_max, y_max, z_max = self.boxes_3d
+            
+        #     for _ in range(10):
+        #         sample = np.random.uniform(
+        #             low=[x_min - 0.2, y_min - 0.1, z_min],
+        #             high=[x_min + 0.1, y_max + 0.5, z_max + 0.2]
+        #         )
+        #         inside = (
+        #             (x_min <= sample[0] <= x_max) and
+        #             (y_min <= sample[1] <= y_max) and
+        #             (z_min <= sample[2] <= z_max)
+        #         )
+        #         if not inside:
+        #             ik_sample = self.robot.inverse_kinematics(sample)
+        #             if ik_sample is not None:
+        #                 return np.array(ik_sample)
+
         bias = np.random.rand() * (end_q - start_q)
-        candidate = start_q + bias + 0.1 * np.random.randn(len(start_q))
+
+        noise_std = 0.1 * np.ones(len(start_q))
+        active_joints = [0, 1, 2, 4]
+        for j in active_joints:
+            noise_std[j] = 0.3
+
+        noise = np.random.randn(len(start_q)) * noise_std
+
+        candidate = start_q + bias + noise + np.random.randn(len(start_q))
         return np.clip(candidate, self.joint_limits[:, 0], self.joint_limits[:, 1])
 
     def ee_dist(self, q1, q2):
@@ -69,25 +96,28 @@ class RRTPlanner:
         if len(self.boxes_3d) == 0:
             return False
 
-        # 获取7个关节的位置，每个位置是(x, y, z)
-        joint_positions = self.robot.get_joint_positions(q)  # shape: (7, 3)
+        joint_positions = self.robot.get_joint_positions(q)
 
-        # 对每一段连杆进行插值（共6段）
         for i in range(len(joint_positions) - 1):
             start = joint_positions[i]
             end = joint_positions[i + 1]
 
-            # 插值点，包括起点和终点
             for alpha in np.linspace(0, 1, num_interpolation_points):
-                point = (1 - alpha) * start + alpha * end  # shape: (3,)
+                point = (1 - alpha) * start + alpha * end
 
-                # 检查这个插值点是否落在任意一个障碍物中
-                for x_min, y_min, z_min, x_max, y_max, z_max in self.boxes_3d:
-                    if (x_min <= point[0] <= x_max and
-                        y_min <= point[1] <= y_max and
-                        z_min <= point[2] <= z_max):
-                        return True  # 碰撞
-        return False  # 无碰撞
+                x_min, y_min, z_min, x_max, y_max, z_max = self.boxes_3d
+                radius = 0
+                x_min -= radius
+                y_min -= radius
+                z_min -= radius
+                x_max += radius
+                y_max += radius
+                z_max += radius
+                if (x_min <= point[0] <= x_max and
+                    y_min <= point[1] <= y_max and
+                    z_min <= point[2] <= z_max):
+                    return True
+        return False
 
 
     def steer(self, q_near, q_rand):

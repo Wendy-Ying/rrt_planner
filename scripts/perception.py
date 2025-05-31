@@ -60,7 +60,7 @@ def process_frame(color_image, depth_frame):
     gray = cv2.convertScaleAbs(gray, alpha=1.2, beta=-30)
 
     corners, ids, _ = detector.detectMarkers(gray)
-    obj, goal = None, None
+    obj, goal, obstacle = None, None, None
     results = []
 
     if ids is not None:
@@ -74,7 +74,7 @@ def process_frame(color_image, depth_frame):
 
             camera_coords = pixel_to_world(depth_frame, [cx, cy], depth)
             world_coords = camera_to_world(np.array(camera_coords))
-            world_coords = np.array([world_coords[0], world_coords[1], world_coords[2]+0.02])
+            world_coords = np.array([world_coords[0], world_coords[1], world_coords[2]+0.01])
             
     #         marker_id = ids[i][0]
     #         if marker_id == 0:
@@ -86,14 +86,16 @@ def process_frame(color_image, depth_frame):
 
             marker_id = ids[i][0]
             if marker_id == 0:
-                goal = np.array([world_coords[0], world_coords[1], world_coords[2]+0.05])
+                goal = np.array([world_coords[0], world_coords[1], world_coords[2]+0.07])
             elif marker_id == 2:
                 obj = world_coords
+            elif marker_id == 3:
+                obstacle = world_coords
 
-    if obj is not None and goal is not None:
-        return obj, goal
+    if obj is not None and goal is not None and obstacle is not None:
+        return obj, goal, obstacle
     else:
-        return None, None
+        return None, None, None
 
 def detect(pipeline, align):
     obj, goal = None, None
@@ -107,10 +109,10 @@ def detect(pipeline, align):
             continue
 
         color_image = np.asanyarray(color_frame.get_data())
-        obj, goal = process_frame(color_image, depth_frame)
+        obj, goal, obstacle = process_frame(color_image, depth_frame)
 
-        if obj is not None and goal is not None:
-            return obj, goal
+        if obj is not None and goal is not None and obstacle is not None:
+            return obj, goal, obstacle
 
 if __name__ == "__main__":
     pipeline, align = init_realsense()
