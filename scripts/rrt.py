@@ -66,7 +66,7 @@ class RRTPlanner:
         return False
 
     def obstacle_collision_check(self, q):
-        if self.boxes_3d is None:
+        if len(self.boxes_3d) == 0:
             return False
         for i, (x_min, y_min, z_min, x_max, y_max, z_max) in enumerate(self.boxes_3d):
             joint_positions = self.robot.get_joint_positions(q)
@@ -144,7 +144,7 @@ class RRTPlanner:
 
             if self.ee_dist(q_new, end_q) < self.step_size * 5:
                 if self.collision_check_line(q_new, end_q):
-                    print("Collision detected at end point.")
+                    # print("Collision detected at end point.")
                     continue
                 tree.append({'q': end_q, 'parent': len(tree) - 1})
                 path = []
@@ -171,7 +171,8 @@ class RRTPlanner:
                 path = self.shortcut_path(path)
                 return path
             else:
-                print(f"Collision detected at node {i}.")
+                # print(f"Collision detected at node {i}.")
+                continue
             
         print("Failed to find a path.")
         return None

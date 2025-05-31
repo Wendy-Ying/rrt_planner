@@ -55,14 +55,14 @@ def main():
         with utilities.DeviceConnection.createTcpConnection(args) as router:
             base = BaseClient(router)
             success = pid_angle_control.execute_path(base, smooth_path)
-            pid_angle_control.send_gripper_command(base, 0.1)
+            pid_angle_control.send_gripper_command(base, 1.0)
             if not success:
                 print("Path execution failed")
             else:
                 print("Path execution completed successfully")
     
     
-    plot_cartesian_trajectory(smooth_path, robot)
+    # plot_cartesian_trajectory(smooth_path, robot)
 
     path = rrt.plan(obj, goal)
     if path:
@@ -72,13 +72,13 @@ def main():
         with utilities.DeviceConnection.createTcpConnection(args) as router:
             base = BaseClient(router)
             success = pid_angle_control.execute_path(base, smooth_path)
-            pid_angle_control.send_gripper_command(base, 1.0)
+            pid_angle_control.send_gripper_command(base, 0.1)
         if not success:
             print("Path execution failed")
         else:
             print("Path execution completed successfully")
 
-    plot_cartesian_trajectory(smooth_path, robot)
+    # plot_cartesian_trajectory(smooth_path, robot)
     
     pipeline.stop()
 

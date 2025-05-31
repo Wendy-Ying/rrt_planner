@@ -82,6 +82,7 @@ def send_gripper_command(base, value):
     finger.finger_identifier = 1
     finger.value = max(0.0, min(1.0, value))  # Ensure value is between 0 and 1
     base.SendGripperCommand(gripper_command)
+    time.sleep(5)  # Wait for gripper to move
 
 def check_joint_limits(angles):
     """Check if joint angles are within limits"""
@@ -148,7 +149,7 @@ def move_to_angles(base, target_angles, gripper_value=0.0, is_endpoint=False):
     
     try:
         # Control gripper
-        send_gripper_command(base, gripper_value)
+        # send_gripper_command(base, gripper_value)
         
         # Joint control loop
         while True:
@@ -181,9 +182,9 @@ def move_to_angles(base, target_angles, gripper_value=0.0, is_endpoint=False):
             
             # Print status
             status = "Joints: " + ", ".join([f"{i+1}:{angle:.1f}" for i, angle in enumerate(current_angles)])
-            print(f"Errors: {max(errors):.2f}", flush=True)
-            print(f"Target: {[f'{a:.1f}' for a in target_angles]}", flush=True)
-            print(f"Current: {[f'{a:.1f}' for a in current_angles]}", flush=True)
+            # print(f"Errors: {max(errors):.2f}", flush=True)
+            # print(f"Target: {[f'{a:.1f}' for a in target_angles]}", flush=True)
+            # print(f"Current: {[f'{a:.1f}' for a in current_angles]}", flush=True)
             # Check if all joints reached target using appropriate error threshold
             if all(error < error_threshold for error in errors):
                 point_type = "endpoint" if is_endpoint else "waypoint"
