@@ -7,8 +7,23 @@ import argparse
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 from kortex_api.autogen.messages import Base_pb2
 
+def warp_to_range(angle, min_value=-180, max_value=180):
+    """Normalize angle to specified range"""
+    # 首先将角度映射到[0, 360)范围
+    angle = angle % 360
+    # 然后将角度映射到[-180, 180)范围
+    if angle > 180:
+        angle -= 360
+    return angle
+
 def calculate_angle_error(target, current):
+    """Calculate the shortest angular distance between target and current angles"""
+    # 先将两个角度都规范化到[-180, 180)范围
+    target = warp_to_range(target)
+    current = warp_to_range(current)
+    # 计算初始误差
     error = target - current
+    # 确保误差在[-180, 180)范围内
     if error > 180:
         error -= 360
     elif error < -180:
@@ -32,14 +47,6 @@ class PIDController:
         self.error_last = error
         output = self.Kp * error + self.Ki * self.error_sum + self.Kd * error_diff
         return np.clip(output, -self.max_output, self.max_output)
-
-def warp_to_range(angle, min_value=-180, max_value=180):
-    """Normalize angle to specified range"""
-    while angle > max_value:
-        angle = angle - 360
-    while angle < min_value:
-        angle = angle + 360
-    return angle
 
 def send_gripper_command(base, value):
     """
