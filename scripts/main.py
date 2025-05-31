@@ -13,7 +13,7 @@ import pid_angle_control
 import utilities
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 
-if __name__ == "__main__":
+def main():
     pipeline, align = init_realsense()
     start_q = np.array([0, 0, 0, 0, 0, 0]) / 180 * np.pi
     goal_q = np.array([10, 20, 0, 0, 0, 0]) / 180 * np.pi
@@ -39,32 +39,49 @@ if __name__ == "__main__":
     optimizer = BSplineOptimizer(robot, degree=3, num_points=3)
 
     obj, goal = detect(pipeline, align)
+    init=np.array([357, 21, 150, 272, 320, 273]) / 180 * np.pi
     print(f"Detected object: {obj}")
     print(f"Goal position: {goal}")
 
+    args = utilities.parseConnectionArguments()
+
     # path = rrt.plan(start_q, goal_q)
-    path = rrt.plan(obj, goal)
+    path = rrt.plan(init, obj)
+    
 
     if path:
         smooth_path = optimizer.optimize(path)
-        
         for i, q in enumerate(smooth_path):
             print(f"Step {i}: {q}")
-        
-        try:            
-            print("Executing optimized path...")
-            args = utilities.parseConnectionArguments()
-            with utilities.DeviceConnection.createTcpConnection(args) as router:
-                base = BaseClient(router)
-                success = pid_angle_control.execute_path(base, smooth_path)
-                if not success:
-                    print("Path execution failed")
-                else:
-                    print("Path execution completed successfully")
-                    
-        except Exception as e:
-            print(f"Error executing path: {str(e)}")
-        
-        plot_cartesian_trajectory(smooth_path, robot)
+        with utilities.DeviceConnection.createTcpConnection(args) as router:
+            base = BaseClient(router)
+            success = pid_angle_control.execute_path(base, smooth_path)
+            if not success:
+                print("Path execution failed")
+            else:
+                print("Path execution completed successfully")
+    
+    plot_cartesian_trajectory(smooth_path, robot)
+
+    path = rrt.plan(obj, goal)
+    if path:
+        smooth_path = optimizer.optimize(path)
+        for i, q in enumerate(smooth_path):
+            print(f"Step {i}: {q}")
+        with utilities.DeviceConnection.createTcpConnection(args) as router:
+            base = BaseClient(router)
+            success = pid_angle_control.execute_path(base, smooth_path)
+        if not success:
+            print("Path execution failed")
+        else:
+            print("Path execution completed successfully")
+
+    plot_cartesian_trajectory(smooth_path, robot)
     
     pipeline.stop()
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        print(f"An error occurred: {e}")

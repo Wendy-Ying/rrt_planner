@@ -95,7 +95,7 @@ def move_to_angles(base, target_angles, gripper_value=0.0):
         PIDController(Kp=2.0, Ki=0.05, Kd=0.1),  # Joint 1
         PIDController(Kp=1.0, Ki=0.05, Kd=0.1),  # Joint 2
         PIDController(Kp=1.0, Ki=0.05, Kd=0.1),  # Joint 3
-        PIDController(Kp=1.5, Ki=0.05, Kd=0.1),  # Joint 4
+        PIDController(Kp=2.0, Ki=0.1, Kd=0.05),  # Joint 4
         PIDController(Kp=1.0, Ki=0.05, Kd=0.1),  # Joint 5
         PIDController(Kp=4.0, Ki=0.05, Kd=0.1)   # Joint 6
     ]
