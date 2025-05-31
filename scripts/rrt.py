@@ -1,12 +1,11 @@
 import numpy as np
 
 class RRTPlanner:
-    def __init__(self, robot, joint_limits, collison_checker, obstacle_detector, step_size=0.1, max_iter=1000, goal_sample_rate=0.4, n_steps=10):
+    def __init__(self, robot, joint_limits, collison_checker, obstacle, step_size=0.1, max_iter=1000, goal_sample_rate=0.4, n_steps=10):
         self.robot = robot
         self.joint_limits = np.array(joint_limits)
         self.collion_checker = collison_checker
-        self.obstacle_detector = obstacle_detector
-        self.boxes_3d = self.obstacle_detector.get_obstacle()
+        self.boxes_3d = obstacle
         self.step_size = step_size
         self.max_iter = max_iter
         self.goal_sample_rate = goal_sample_rate
@@ -47,25 +46,23 @@ class RRTPlanner:
         return True
 
     def collision_check_line(self, q1, q2):
-        # for alpha in np.linspace(0, 1, self.n_steps):
-        #     q_interp = q1 + alpha * (q2 - q1)
-        #     if not self.is_within_limits(q_interp):
-        #         print(f"Joint limits exceeded at {q_interp}")
-        #         return True
-        #     if self.collion_checker.self_collision(q_interp):
-        #         return True
-        # return False
+        for alpha in np.linspace(0, 1, self.n_steps):
+            q_interp = q1 + alpha * (q2 - q1)
+            # if not self.is_within_limits(q_interp):
+            #     print(f"Joint limits exceeded at {q_interp}")
+            #     return True
+            if not self.obstacle_collision_check(q_interp):
+                print(f"Collision detected at {q_interp}")
+                return True
         return False
     
     def obstacle_collision_check(self, q):
         if self.boxes_3d is None:
             return False
-        for box in self.boxes_3d:
-            box_min, box_max = box
-            box_min = np.array(box_min)
-            box_max = np.array(box_max)
-            joint_positions = self.obstacle_detector.get_joint_positions(q)
-            if np.any(joint_positions < box_min) or np.any(joint_positions > box_max):
+        boxes = [self.boxes_3d] if isinstance(self.boxes_3d, tuple) else self.boxes_3d
+        for i, (pt_min, pt_max) in enumerate(self.boxes_3d):
+            joint_positions = self.robot.get_joint_positions(q)
+            if np.any(joint_positions < pt_min) or np.any(joint_positions > pt_max):
                 return True
         return False
 

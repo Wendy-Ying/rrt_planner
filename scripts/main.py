@@ -32,8 +32,10 @@ if __name__ == "__main__":
     
     collision_checker = CollisionChecker(dh_params)
     obstacle_detector = ObstacleDetector(pipeline, align)
+    obstacle = obstacle_detector.get_obstacle(visualize=False)
+    print(f"Obstacle: {obstacle}")
 
-    rrt = RRTPlanner(robot, joint_limits, collision_checker, obstacle_detector)
+    rrt = RRTPlanner(robot, joint_limits, collision_checker, obstacle)
     optimizer = BSplineOptimizer(robot, degree=3, num_points=3)
 
     obj, goal = detect(pipeline, align)
