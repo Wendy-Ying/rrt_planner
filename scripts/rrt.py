@@ -47,13 +47,14 @@ class RRTPlanner:
         return True
 
     def collision_check_line(self, q1, q2):
-        for alpha in np.linspace(0, 1, self.n_steps):
-            q_interp = q1 + alpha * (q2 - q1)
-            if not self.is_within_limits(q_interp):
-                print(f"Joint limits exceeded at {q_interp}")
-                return True
-            if self.collion_checker.self_collision(q_interp):
-                return True
+        # for alpha in np.linspace(0, 1, self.n_steps):
+        #     q_interp = q1 + alpha * (q2 - q1)
+        #     if not self.is_within_limits(q_interp):
+        #         print(f"Joint limits exceeded at {q_interp}")
+        #         return True
+        #     if self.collion_checker.self_collision(q_interp):
+        #         return True
+        # return False
         return False
     
     def obstacle_collision_check(self, q):
@@ -135,9 +136,9 @@ class RRTPlanner:
             tree.append({'q': q_new, 'parent': idx_near})
 
             if self.ee_dist(q_new, end_q) < self.step_size * 5:
-                if self.collision_check_line(q_new, end_q):
-                    print("Collision detected at end point.")
-                    continue
+                # if self.collision_check_line(q_new, end_q):
+                #     print("Collision detected at end point.")
+                #     continue
                 tree.append({'q': end_q, 'parent': len(tree) - 1})
                 path = []
                 idx = len(tree) - 1

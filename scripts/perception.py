@@ -39,16 +39,16 @@ def pixel_to_world(depth_frame, pixel, depth):
 def camera_to_world(camera_point):
     R1 = np.array([
         [1, 0, 0],
-        [0, math.cos(0.52), -math.sin(0.52)],
-        [0, math.sin(0.52), math.cos(0.52)]
+        [0, math.cos(math.pi/6), -math.sin(math.pi/6)],
+        [0, math.sin(math.pi/6), math.cos(math.pi/6)]
     ])
     R2 = np.array([
         [-1, 0, 0],
-        [0, -1, 0],
+        [0, 1, 0],
         [0, 0, -1]
     ])
-    R = R1 @ R2
-    t = np.array([0.4, -0.37, 0.47])
+    R = R2 @ R1
+    t = np.array([0.39, 0.337, 0.4])
     return R @ camera_point + t
 
 # --------------- Frame Processing ------------------
@@ -61,6 +61,7 @@ def process_frame(color_image, depth_frame):
 
     corners, ids, _ = detector.detectMarkers(gray)
     obj, goal = None, None
+    results = []
 
     if ids is not None:
         for i, corner in enumerate(corners):
@@ -73,6 +74,15 @@ def process_frame(color_image, depth_frame):
 
             camera_coords = pixel_to_world(depth_frame, [cx, cy], depth)
             world_coords = camera_to_world(np.array(camera_coords))
+            world_coords = np.array([world_coords[0], world_coords[1], world_coords[2]])
+            
+    #         marker_id = ids[i][0]
+    #         if marker_id == 0:
+    #             results.append((cx, cy, 'goal'))
+    #         elif marker_id == 2:
+    #             results.append((cx, cy, 'obj'))
+
+    # return results  # List of (x, y, label)
 
             marker_id = ids[i][0]
             if marker_id == 0:
@@ -101,3 +111,32 @@ def detect(pipeline, align):
 
         if obj is not None and goal is not None:
             return obj, goal
+
+if __name__ == "__main__":
+    pipeline, align = init_realsense()
+    try:
+        while True:
+            frames = pipeline.wait_for_frames()
+            aligned = align.process(frames)
+            depth_frame = aligned.get_depth_frame()
+            color_frame = aligned.get_color_frame()
+            if not depth_frame or not color_frame:
+                continue
+
+            color_image = np.asanyarray(color_frame.get_data())
+            detected_points = process_frame(color_image, depth_frame)
+
+            for (x, y, label) in detected_points:
+                cv2.circle(color_image, (x, y), 6, (0, 0, 255), -1)
+                cv2.putText(color_image, label, (x + 10, y - 10), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                camera_cords = pixel_to_world(depth_frame, [x, y], depth_frame.get_distance(x, y))
+                world_coords = camera_to_world(np.array(camera_cords))
+                print(f"{label} detected at: world={world_coords}")
+
+            cv2.imshow("Color Image", color_image)
+            if cv2.waitKey(1) == 27:  # ESC key
+                break
+    finally:
+        pipeline.stop()
+        cv2.destroyAllWindows()

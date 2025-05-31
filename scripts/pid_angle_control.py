@@ -119,7 +119,7 @@ def move_to_angles(base, target_angles, gripper_value=0.0):
             print(f"{status} | Errors: {max(errors):.2f}", flush=True)
             
             # Check if all joints reached target (error less than 1 degree)
-            if all(error < 1.0 for error in errors):
+            if all(error < 0.3 for error in errors):
                 print("Target position reached")
                 return True
                 

@@ -56,7 +56,7 @@ class NLinkArm:
                 return q
 
             J = self.jacobian_numerical(q)
-            weights = np.array([3.0, 10.0, 3.0, 0.1, 0.1, 0.1])
+            weights = np.array([2.0, 3.0, 1.0, 0.1, 0.1, 0.1])
             try:
                 dq = alpha * self.weighted_pseudo_inverse(J, weights).dot(error)
             except np.linalg.LinAlgError:
