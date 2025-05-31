@@ -52,10 +52,19 @@ class RRTPlanner:
             #     print(f"Joint limits exceeded at {q_interp}")
             #     return True
             if not self.obstacle_collision_check(q_interp):
-                print(f"Collision detected at {q_interp}")
+                print(f"Collision detected with obstacle")
+                return True
+            if not self.cartesian_collision_check(q_interp):
+                print(f"Collision detected with cartesian")
                 return True
         return False
     
+    def cartesian_collision_check(self, q):
+        joint_positions = self.robot.get_joint_positions(q)
+        if np.any(joint_positions[:, 2] < 0.05):
+            return True
+        return False
+
     def obstacle_collision_check(self, q):
         if self.boxes_3d is None:
             return False
@@ -64,7 +73,6 @@ class RRTPlanner:
             xyz_min = np.array([x_min, y_min, z_min])
             xyz_max = np.array([x_max, y_max, z_max])
             if np.any(joint_positions < xyz_min) or np.any(joint_positions > xyz_max):
-                print(f"Collision detected with box {i} at {joint_positions}")
                 return True
         return False
 
@@ -135,9 +143,9 @@ class RRTPlanner:
             tree.append({'q': q_new, 'parent': idx_near})
 
             if self.ee_dist(q_new, end_q) < self.step_size * 5:
-                # if self.collision_check_line(q_new, end_q):
-                #     print("Collision detected at end point.")
-                #     continue
+                if self.collision_check_line(q_new, end_q):
+                    print("Collision detected at end point.")
+                    continue
                 tree.append({'q': end_q, 'parent': len(tree) - 1})
                 path = []
                 idx = len(tree) - 1

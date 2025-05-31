@@ -86,7 +86,7 @@ def process_frame(color_image, depth_frame):
 
             marker_id = ids[i][0]
             if marker_id == 0:
-                goal = world_coords
+                goal = np.array([world_coords[0], world_coords[1], world_coords[2]+0.03])
             elif marker_id == 2:
                 obj = world_coords
 

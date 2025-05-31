@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import pyrealsense2 as rs
 from perception import pixel_to_world, camera_to_world, init_realsense
+from sklearn.cluster import DBSCAN
 
 class ObstacleDetector:
     def __init__(self, pipeline, align, ground_height_limit=0.05):
@@ -9,7 +10,7 @@ class ObstacleDetector:
         self.align = align
         self.ground_height_limit = ground_height_limit
 
-    def get_obstacle(self, visualize=False):
+    def find_obstacle(self, visualize=False):
         frames = self.pipeline.wait_for_frames()
         aligned_frames = self.align.process(frames)
 
@@ -18,71 +19,100 @@ class ObstacleDetector:
         if not depth_frame or not color_frame:
             return [], None
 
+        # pyrealsense filter
+        spat_filter = rs.spatial_filter()
+        temp_filter = rs.temporal_filter()
+        hole_filling = rs.hole_filling_filter()
+        depth_frame = spat_filter.process(depth_frame)
+        depth_frame = temp_filter.process(depth_frame)
+        depth_frame = hole_filling.process(depth_frame)
+
         depth_image = np.asanyarray(depth_frame.get_data())
         color_image = np.asanyarray(color_frame.get_data())
         depth_scale = self.pipeline.get_active_profile().get_device().first_depth_sensor().get_depth_scale()
         depth_m = depth_image * depth_scale
 
-        # find gradient
-        depth_blur = cv2.GaussianBlur(depth_m, (5, 5), 0)
-        sobelx = cv2.Sobel(depth_blur, cv2.CV_64F, 1, 0, ksize=5)
-        sobely = cv2.Sobel(depth_blur, cv2.CV_64F, 0, 1, ksize=5)
-        grad_mag = np.sqrt(sobelx ** 2 + sobely ** 2)
-        edge_mask = (grad_mag > 0.2).astype(np.uint8) * 255
-
-        # generate region mask
+        # detect edge
+        depth_8u = cv2.normalize(depth_m, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
         kernel = np.ones((5, 5), np.uint8)
-        region_mask = cv2.dilate(edge_mask, kernel, iterations=2)
-        region_mask = cv2.morphologyEx(region_mask, cv2.MORPH_CLOSE, kernel)
+        depth_8u = cv2.dilate(depth_8u, kernel, iterations=1)
+        edges = cv2.Canny(depth_8u, 30, 100)
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        contours, _ = cv2.findContours(region_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        boxes_3d = []
-        h, w = depth_m.shape
-
+        obstacles = []
         for cnt in contours:
-            area = cv2.contourArea(cnt)
-            if area < 500:
+            x, y, w, h = cv2.boundingRect(cnt)
+            if w < 20 or h < 20:
+                continue
+            if x < 10 or y < 10 or x + w > depth_m.shape[1] - 10 or y + h > depth_m.shape[0] - 10:
                 continue
 
-            x, y, bw, bh = cv2.boundingRect(cnt)
-
-            border_margin = 30
-            if x < border_margin or (x + bw) > (w - border_margin):
+            roi = depth_m[y:y+h, x:x+w]
+            if roi.size == 0:
                 continue
+            roi_mean = np.mean(roi[np.isfinite(roi)])
 
-            roi_points = []
-            for dy in range(bh):
-                for dx in range(bw):
-                    px = x + dx
-                    py = y + dy
-                    d = depth_m[py, px]
-                    if d <= 0:
-                        continue
-                    try:
-                        cam_pt = pixel_to_world(depth_frame, [px, py], d)
-                        base_pt = camera_to_world(np.array(cam_pt))
-                        if base_pt[2] < self.ground_height_limit:
-                            continue
-                        roi_points.append(base_pt)
-                    except:
-                        continue
+            expand = 10
+            y1 = max(0, y - expand)
+            y2 = min(depth_m.shape[0], y + h + expand)
+            x1 = max(0, x - expand)
+            x2 = min(depth_m.shape[1], x + w + expand)
+            bg_roi = depth_m[y1:y2, x1:x2].copy()
 
-            if len(roi_points) == 0:
+            bg_roi[(expand):(expand+h), (expand):(expand+w)] = np.nan
+            bg_mean = np.nanmean(bg_roi)
+
+            if np.isnan(roi_mean) or np.isnan(bg_mean):
                 continue
-
-            points_np = np.array(roi_points)
-            x_min, y_min, z_min = np.min(points_np, axis=0)
-            x_max, y_max, z_max = np.max(points_np, axis=0)
-            boxes_3d.append([x_min, y_min, z_min, x_max, y_max, z_max])
-
-            if visualize:
-                cv2.rectangle(color_image, (x, y), (x + bw, y + bh), (255, 0, 0), 2)
-                text = f"3D Box: {x_min:.2f},{y_min:.2f},{z_min:.2f}"
-                cv2.putText(color_image, text, (x, y - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
+            
+            # roi depth mean should be less than bg depth mean
+            if roi_mean < bg_mean - 0.05:
+                obstacles.append((x, y, w, h))
+                if visualize:
+                    cv2.rectangle(color_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
         if visualize:
-            return boxes_3d, color_image
+            return obstacles, color_image
+        else:
+            return obstacles
+    
+    def get_obstacle_3d(self, visualize=False):
+        if visualize:
+            obstacles, vis_img = self.find_obstacle(visualize=True)
+        else:
+            obstacles = self.find_obstacle(visualize=False)
+        
+        frames = self.pipeline.wait_for_frames()
+        aligned_frames = self.align.process(frames)
+        depth_frame = aligned_frames.get_depth_frame()
+
+        if not depth_frame:
+            return []
+
+        boxes_3d = []
+
+        for (x, y, w, h) in obstacles:
+            world_points = []
+            for i in range(y, y + h):
+                for j in range(x, x + w):
+                    depth = depth_frame.get_distance(j, i)
+                    if depth == 0 or not np.isfinite(depth):
+                        continue
+                    camera_point = pixel_to_world(depth_frame, [j, i], depth)
+                    world_point = camera_to_world(np.array(camera_point))
+                    world_points.append(world_point)
+            
+            if not world_points:
+                continue
+
+            world_points = np.array(world_points)
+            x_min, y_min, z_min = np.min(world_points, axis=0)
+            x_max, y_max, z_max = np.max(world_points, axis=0)
+
+            boxes_3d.append((x_min, y_min, z_min, x_max, y_max, z_max))
+
+        if visualize:
+            return boxes_3d, vis_img
         else:
             return boxes_3d
 
@@ -94,10 +124,9 @@ if __name__ == "__main__":
 
     try:
         while True:
-            boxes_3d, vis_img = detector.get_obstacle(visualize=True)
-            print(boxes_3d)
+            boxes_3d, vis_img = detector.get_obstacle_3d(visualize=True)
             for i, (x_min, y_min, z_min, x_max, y_max, z_max) in enumerate(boxes_3d):
-                print(f"Box {i}: {x_min:.2f},{y_min:.2f},{z_min:.2f} to {x_max:.2f},{y_max:.2f},{z_max:.2f}")
+                print(f"Box {i}: x({x_min:.3f}~{x_max:.3f}), y({y_min:.3f}~{y_max:.3f}), z({z_min:.3f}~{z_max:.3f})")
             if vis_img is not None:
                 cv2.imshow("Obstacles", vis_img)
             if cv2.waitKey(1) == 27:

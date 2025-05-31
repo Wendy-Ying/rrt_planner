@@ -15,8 +15,7 @@ from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 
 def main():
     pipeline, align = init_realsense()
-    start_q = np.array([0, 0, 0, 0, 0, 0]) / 180 * np.pi
-    goal_q = np.array([10, 20, 0, 0, 0, 0]) / 180 * np.pi
+    
     joint_limits = np.array([(205, 150), (205, 150), (210, 150), (210, 145), (215, 140), (210, 150)]) / 180 * np.pi
 
     dh_params = [
@@ -32,11 +31,11 @@ def main():
     
     collision_checker = CollisionChecker(dh_params)
     detector = ObstacleDetector(pipeline, align)
-    boxes_3d = detector.get_obstacle(visualize=False)
+    boxes_3d = detector.get_obstacle_3d(visualize=False)
     print(f"box: {boxes_3d}")
 
     rrt = RRTPlanner(robot, joint_limits, collision_checker, boxes_3d)
-    optimizer = BSplineOptimizer(robot, degree=3, num_points=3)
+    optimizer = BSplineOptimizer(robot, degree=3, num_points=5)
 
     obj, goal = detect(pipeline, align)
     init=np.array([357, 21, 150, 272, 320, 273]) / 180 * np.pi
@@ -56,10 +55,12 @@ def main():
         with utilities.DeviceConnection.createTcpConnection(args) as router:
             base = BaseClient(router)
             success = pid_angle_control.execute_path(base, smooth_path)
+            pid_angle_control.send_gripper_command(base, 0.3)
             if not success:
                 print("Path execution failed")
             else:
                 print("Path execution completed successfully")
+    
     
     plot_cartesian_trajectory(smooth_path, robot)
 
@@ -71,6 +72,7 @@ def main():
         with utilities.DeviceConnection.createTcpConnection(args) as router:
             base = BaseClient(router)
             success = pid_angle_control.execute_path(base, smooth_path)
+            pid_angle_control.send_gripper_command(base, 1.0)
         if not success:
             print("Path execution failed")
         else:
