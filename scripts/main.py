@@ -31,7 +31,7 @@ def main():
     
     collision_checker = CollisionChecker(dh_params)
     detector = ObstacleDetector(pipeline, align)
-    boxes_3d = detector.get_obstacle_3d(visualize=False)
+    boxes_3d = detector.get_world_bounding_boxes(visualize=False)
     print(f"box: {boxes_3d}")
 
     rrt = RRTPlanner(robot, joint_limits, collision_checker, boxes_3d)
@@ -55,7 +55,7 @@ def main():
         with utilities.DeviceConnection.createTcpConnection(args) as router:
             base = BaseClient(router)
             success = pid_angle_control.execute_path(base, smooth_path)
-            pid_angle_control.send_gripper_command(base, 0.3)
+            pid_angle_control.send_gripper_command(base, 0.1)
             if not success:
                 print("Path execution failed")
             else:

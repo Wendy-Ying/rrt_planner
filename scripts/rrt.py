@@ -52,16 +52,16 @@ class RRTPlanner:
             #     print(f"Joint limits exceeded at {q_interp}")
             #     return True
             if not self.obstacle_collision_check(q_interp):
-                print(f"Collision detected with obstacle")
+                # print(f"Collision detected with obstacle")
                 return True
             if not self.cartesian_collision_check(q_interp):
-                print(f"Collision detected with cartesian")
+                # print(f"Collision detected with cartesian")
                 return True
         return False
     
     def cartesian_collision_check(self, q):
         joint_positions = self.robot.get_joint_positions(q)
-        if np.any(joint_positions[:, 2] < 0.05):
+        if np.any(joint_positions[:, 2] < 0.2):
             return True
         return False
 
