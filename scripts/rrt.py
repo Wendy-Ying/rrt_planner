@@ -1,7 +1,7 @@
 import numpy as np
 
 class RRTPlanner:
-    def __init__(self, robot, joint_limits, collison_checker, obstacle, step_size=0.01, max_iter=1000, goal_sample_rate=0.2, n_steps=5):
+    def __init__(self, robot, joint_limits, collison_checker, obstacle, step_size=0.05, max_iter=1000, goal_sample_rate=0.2, n_steps=3):
         self.robot = robot
         self.joint_limits = np.array(joint_limits)
         self.collion_checker = collison_checker
@@ -15,24 +15,6 @@ class RRTPlanner:
         if np.random.rand() < self.goal_sample_rate:
             return end_q
         
-        # elif np.random.rand() < 0.1:
-        #     x_min, y_min, z_min, x_max, y_max, z_max = self.boxes_3d
-            
-        #     for _ in range(10):
-        #         sample = np.random.uniform(
-        #             low=[x_min - 0.2, y_min - 0.1, z_min],
-        #             high=[x_min + 0.1, y_max + 0.5, z_max + 0.2]
-        #         )
-        #         inside = (
-        #             (x_min <= sample[0] <= x_max) and
-        #             (y_min <= sample[1] <= y_max) and
-        #             (z_min <= sample[2] <= z_max)
-        #         )
-        #         if not inside:
-        #             ik_sample = self.robot.inverse_kinematics(sample)
-        #             if ik_sample is not None:
-        #                 return np.array(ik_sample)
-
         bias = np.random.rand() * (end_q - start_q)
 
         noise_std = 0.1 * np.ones(len(start_q))
@@ -75,14 +57,9 @@ class RRTPlanner:
     def collision_check_line(self, q1, q2):
         for alpha in np.linspace(0, 1, self.n_steps):
             q_interp = q1 + alpha * (q2 - q1)
-            # if not self.is_within_limits(q_interp):
-            #     print(f"Joint limits exceeded at {q_interp}")
-            #     return True
             if self.obstacle_collision_check(q_interp):
-                # print(f"Collision detected with obstacle")
                 return True
             if self.cartesian_collision_check(q_interp):
-                # print(f"Collision detected with cartesian")
                 return True
         return False
     
@@ -119,7 +96,6 @@ class RRTPlanner:
                     return True
         return False
 
-
     def steer(self, q_near, q_rand):
         direction = q_rand - q_near
         length = np.linalg.norm(direction)
@@ -136,43 +112,67 @@ class RRTPlanner:
             return None
         return q_new
 
-    def shortcut_path(self, path):
-        if len(path) <= 2:
-            return path
+    def calculate_3d_tangents(self, point, box):
+        """Calculate tangent points from a point to a 3D box"""
+        x_min, y_min, z_min, x_max, y_max, z_max = box
+        corners = np.array([
+            [x_min, y_min, z_min], [x_max, y_min, z_min],
+            [x_min, y_max, z_min], [x_max, y_max, z_min],
+            [x_min, y_min, z_max], [x_max, y_min, z_max],
+            [x_min, y_max, z_max], [x_max, y_max, z_max]
+        ])
         
-        path = path.copy()
-        max_trials = 100
-        trial = 0
+        tangent_points = []
+        
+        # For each edge of the box
+        edges = [
+            # Vertical edges
+            ([0, 4], [x_min, y_min]), ([1, 5], [x_max, y_min]),
+            ([2, 6], [x_min, y_max]), ([3, 7], [x_max, y_max]),
+            # Horizontal edges at z_min
+            ([0, 1], z_min), ([0, 2], z_min),
+            ([1, 3], z_min), ([2, 3], z_min),
+            # Horizontal edges at z_max
+            ([4, 5], z_max), ([4, 6], z_max),
+            ([5, 7], z_max), ([6, 7], z_max)
+        ]
+        
+        for edge in edges:
+            if len(edge[1]) == 2:  # Vertical edge
+                # Project point onto the vertical line
+                x, y = edge[1]
+                z = np.clip(point[2], z_min, z_max)
+                tangent_points.append(np.array([x, y, z]))
+            else:  # Horizontal edge
+                z = edge[1]
+                # Get the two corner points
+                c1, c2 = corners[edge[0][0]], corners[edge[0][1]]
+                # Project point onto the line segment
+                v = c2 - c1
+                t = np.clip(np.dot(point - c1, v) / np.dot(v, v), 0, 1)
+                proj = c1 + t * v
+                tangent_points.append(proj)
+        
+        return tangent_points
 
-        while trial < max_trials:
-            if len(path) <= 2:
-                break
-            i = np.random.randint(0, len(path) - 2)
-            j = np.random.randint(i + 2, len(path))
-            if not self.collision_check_line(path[i], path[j]):
-                path = path[:i+1] + path[j:]
-            trial += 1
-        return path
+    def check_cartesian_line(self, start_pos, end_pos, num_points=20):
+        """Check if a line in Cartesian space collides with the obstacle"""
+        x_min, y_min, z_min, x_max, y_max, z_max = self.boxes_3d
+        
+        # Check multiple points along the line
+        for t in np.linspace(0, 1, num_points):
+            point = start_pos + t * (end_pos - start_pos)
+            
+            # Check if point is inside obstacle
+            if (x_min <= point[0] <= x_max and
+                y_min <= point[1] <= y_max and
+                z_min <= point[2] <= z_max):
+                return True  # Collision detected
+                
+        return False  # No collision
 
-    def plan(self, start_q, end_q):
-        start_q = np.array(start_q)
-        end_q = np.array(end_q)
-
-        # Handle 3D input (xyz position)
-        if start_q.shape[0] == 3:
-            ik_start = self.robot.inverse_kinematics(start_q)
-            print(f"IK start: {ik_start}")
-            if ik_start is None:
-                raise ValueError("IK failed for start position")
-            start_q = np.array(ik_start)
-
-        if end_q.shape[0] == 3:
-            ik_end = self.robot.inverse_kinematics(end_q)
-            print(f"IK end: {ik_end}")
-            if ik_end is None:
-                raise ValueError("IK failed for end position")
-            end_q = np.array(ik_end)
-
+    def rrt_plan(self, start_q, end_q):
+        """Basic RRT path planning implementation"""
         tree = [{'q': start_q, 'parent': None}]
 
         for _ in range(self.max_iter):
@@ -188,7 +188,6 @@ class RRTPlanner:
 
             if self.ee_dist(q_new, end_q) < self.step_size * 10:
                 if self.collision_check_line(q_new, end_q):
-                    # print("Collision detected at end point.")
                     continue
                 tree.append({'q': end_q, 'parent': len(tree) - 1})
                 path = []
@@ -197,9 +196,6 @@ class RRTPlanner:
                     path.append(tree[idx]['q'])
                     idx = tree[idx]['parent']
                 path.reverse()
-
-                path = self.shortcut_path(path)
-
                 return path
             
         for i in reversed(range(len(tree))):
@@ -212,10 +208,65 @@ class RRTPlanner:
                     path.append(tree[idx]['q'])
                     idx = tree[idx]['parent']
                 path.reverse()
-                path = self.shortcut_path(path)
                 return path
-            else:
-                print(f"Collision detected at node {i}.")
             
         print("Failed to find a path.")
         return None
+
+    def plan(self, start_q, end_q):
+        """Plan a path considering direct path and obstacle avoidance"""
+        # Convert to Cartesian space if needed
+        if len(start_q) == 3:
+            start_cart = start_q
+            start_q = self.robot.inverse_kinematics(start_q)
+            print(f"IK start: {start_q}")
+            if start_q is None:
+                raise ValueError("IK failed for start position")
+            start_q = np.array(start_q)
+        else:
+            start_cart = self.robot.forward_kinematics(start_q)
+            
+        if len(end_q) == 3:
+            end_cart = end_q
+            end_q = self.robot.inverse_kinematics(end_q)
+            print(f"IK end: {end_q}")
+            if end_q is None:
+                raise ValueError("IK failed for end position")
+            end_q = np.array(end_q)
+        else:
+            end_cart = self.robot.forward_kinematics(end_q)
+            
+        # Check if direct path is possible
+        if not self.check_cartesian_line(start_cart, end_cart):
+            print("Direct path possible, attempting direct planning...")
+            direct_path = self.rrt_plan(start_q, end_q)
+            if direct_path is not None:
+                return direct_path
+            
+        # Try using intermediate points
+        print("Using intermediate points around obstacle...")
+        tangent_points = self.calculate_3d_tangents(start_cart, self.boxes_3d)
+        line_vector = end_cart - start_cart
+        min_dist = float('inf')
+        best_tangent = None
+        
+        for point in tangent_points:
+            point_vector = point - start_cart
+            dist = np.linalg.norm(np.cross(point_vector, line_vector)) / np.linalg.norm(line_vector)
+            if dist < min_dist:
+                min_dist = dist
+                best_tangent = point
+        
+        if best_tangent is not None:
+            tangent_q = self.robot.inverse_kinematics(best_tangent)
+            if tangent_q is not None:
+                print("Planning through tangent point...")
+                path1 = self.rrt_plan(start_q, tangent_q)
+                if path1 is not None:
+                    path2 = self.rrt_plan(tangent_q, end_q)
+                    if path2 is not None:
+                        return path1 + path2[1:]
+        
+        # If all else fails, try direct RRT planning again
+        print("Attempting direct RRT planning...")
+        return self.rrt_plan(start_q, end_q)

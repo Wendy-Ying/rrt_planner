@@ -58,7 +58,7 @@ def main():
 
             # Generate and execute path to object
             print("Planning path to object...")
-            path1 = rrt.plan(init, obj_grasp)
+            path1 = rrt.plan(init, obj_grasp)  # Plan will automatically choose best strategy
             if path1 is None:
                 print("Failed to plan path to object")
                 return
@@ -76,7 +76,7 @@ def main():
             # Generate and execute path to goal
             print("\nPlanning path to goal...")
             goal_pos = goal + np.array([0, 0, 0.05])  # Add z-offset for placing
-            path2 = rrt.plan(obj_grasp, goal_pos)
+            path2 = rrt.plan(obj_grasp, goal_pos)  # Plan will automatically handle obstacles
             if path2 is None:
                 print("Failed to plan path to goal")
                 return
