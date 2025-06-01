@@ -1,7 +1,7 @@
 import numpy as np
 
 class RRTPlanner:
-    def __init__(self, robot, joint_limits, collison_checker, obstacle, step_size=0.05, max_iter=1000, goal_sample_rate=0.2, n_steps=3):
+    def __init__(self, robot, joint_limits, collison_checker, obstacle, step_size=0.05, max_iter=1000, goal_sample_rate=0.2, n_steps=5):
         self.robot = robot
         self.joint_limits = np.array(joint_limits)
         self.collion_checker = collison_checker
@@ -39,7 +39,7 @@ class RRTPlanner:
             # Apply bias to random sample
             for _ in range(10):  # Try up to 10 times
                 bias = np.random.rand() * (end_q - start_q)
-                noise_std = 0.1 * np.ones(start_q.size)
+                noise_std = 0.5 * np.ones(start_q.size)
                 active_joints = [0, 1, 2, 4]
                 for j in active_joints:
                     noise_std[j] = 0.3
@@ -48,8 +48,8 @@ class RRTPlanner:
                 
                 # Check if this configuration avoids the obstacle
                 ee_pos = self.robot.forward_kinematics(candidate)
-                if not (x_min - 0.1 <= ee_pos[0] <= x_max + 0.1 and
-                       y_min - 0.1 <= ee_pos[1] <= y_max + 0.1):
+                if not (x_min <= ee_pos[0] <= x_max and
+                       y_min <= ee_pos[1] <= y_max):
                     return np.clip(candidate, self.joint_limits[:, 0], self.joint_limits[:, 1])
         
         # Default sampling if no obstacle avoidance needed
@@ -111,7 +111,6 @@ class RRTPlanner:
 
         # Ensure inputs are numpy arrays
         q = np.array(q)
-        joint_positions = np.array(self.robot.get_joint_positions(q))
         ee_position = np.array(self.robot.forward_kinematics(q))
         
         # Convert box boundaries to native Python floats
@@ -121,34 +120,34 @@ class RRTPlanner:
         x_max = float(self.boxes_3d[3])
         y_max = float(self.boxes_3d[4])
         z_max = float(self.boxes_3d[5])
+        # print(f"x_min={x_min:.3f}, x_max={x_max:.3f}, ")
+        # print(f"y_min={y_min:.3f}, y_max={y_max:.3f}, ")
+        # print(f"z_min={z_min:.3f}, z_max={z_max:.3f}, ")
 
-        # First check end-effector position with larger margins
-        margin_xy = 0.1  # 10cm margin in xy plane
-        margin_z = 0.05  # 5cm margin in z direction
-        
-        if (x_min - margin_xy <= ee_position[0] <= x_max + margin_xy and
-            y_min - margin_xy <= ee_position[1] <= y_max + margin_xy and
-            z_min - margin_z <= ee_position[2] <= z_max + margin_z):
+        # Check 
+        if (x_min <= ee_position[0] <= x_max and
+            y_min <= ee_position[1] <= y_max and
+            z_min <= ee_position[2] <= z_max):
             print(f"\nEnd-effector collision detected!")
             print(f"EE Position: x={ee_position[0]:.3f}, y={ee_position[1]:.3f}, z={ee_position[2]:.3f}")
-            print(f"Box bounds + margin: x=[{x_min - margin_xy:.3f}, {x_max + margin_xy:.3f}]")
-            print(f"                    y=[{y_min - margin_xy:.3f}, {y_max + margin_xy:.3f}]")
-            print(f"                    z=[{z_min - margin_z:.3f}, {z_max + margin_z:.3f}]")
             return True
 
-        # Then check intermediate points between joints with smaller margins
+        # Joint collision check code (commented out for now)
+
+        joint_positions = np.array(self.robot.get_joint_positions(q))
         for i in range(joint_positions.shape[0] - 1):
             start = np.array(joint_positions[i])
             end = np.array(joint_positions[i + 1])
 
             for alpha in np.linspace(0, 1, num_interpolation_points):
                 point = np.array((1 - alpha) * start + alpha * end)
-                margin = 0.05  # 5cm margin for robot links
-                if (x_min - margin <= point[0] <= x_max + margin and
-                    y_min - margin <= point[1] <= y_max + margin and
-                    z_min - margin <= point[2] <= z_max + margin):
+                if (x_min <= point[0] <= x_max and
+                    y_min <= point[1] <= y_max and
+                    z_min <= point[2] <= z_max):
                     print(f"Joint link collision detected at position: {point}")
                     return True
+
+        
         return False
 
     def steer(self, q_near, q_rand):
@@ -181,19 +180,15 @@ class RRTPlanner:
         y_max = float(self.boxes_3d[4])
         z_max = float(self.boxes_3d[5])
         
-        # Add safety margin for obstacle avoidance
-        margin_xy = 0.1  # 10cm margin in xy plane
-        margin_z = 0.05  # 5cm margin in z direction
-        
         # Check multiple points along the line
         for t in np.linspace(0, 1, num_points):
             point = start_pos + t * (end_pos - start_pos)
             point = np.array(point)  # Ensure point is array
             
-            # Check if point is inside obstacle (with margin)
-            if (x_min - margin_xy <= point[0] <= x_max + margin_xy and
-                y_min - margin_xy <= point[1] <= y_max + margin_xy and
-                z_min - margin_z <= point[2] <= z_max + margin_z):
+            # Check if point is inside obstacle
+            if (x_min <= point[0] <= x_max and
+                y_min <= point[1] <= y_max and
+                z_min <= point[2] <= z_max):
                 print(f"Cartesian path collision at point: [{point[0]:.3f}, {point[1]:.3f}, {point[2]:.3f}]")
                 return True  # Collision detected
                 
@@ -202,6 +197,7 @@ class RRTPlanner:
     def rrt_plan(self, start_q, end_q):
         """Basic RRT path planning implementation"""
         tree = [{'q': start_q, 'parent': None}]
+        failed_nodes = []  # Keep track of nodes that led to invalid paths
         print("\nStarting RRT planning...")
         print(f"Start config: {start_q}")
         print(f"Goal config: {end_q}")
@@ -210,33 +206,48 @@ class RRTPlanner:
         for i in range(self.max_iter):
             if i % 100 == 0:  # Print progress every 100 iterations
                 print(f"RRT iteration {i}/{self.max_iter}, tree size: {len(tree)}")
+            
             q_rand = self.sample_q(end_q, start_q)
             idx_near = self.nearest_index(tree, q_rand)
             q_near = tree[idx_near]['q']
+            
+            # Skip sampling near failed nodes
+            if any(np.linalg.norm(q_near - failed_node) < self.step_size for failed_node in failed_nodes):
+                continue
             
             q_new = self.steer(q_near, q_rand)
             if q_new is None:
                 continue
 
             tree.append({'q': q_new, 'parent': idx_near})
+            tree_idx = len(tree) - 1  # Index of newly added node
 
             if self.ee_dist(q_new, end_q) < self.step_size * 10:
                 if self.collision_check_line(q_new, end_q):
-                    print("Found path but collision check failed")
+                    # Remove invalid node and add to failed nodes
+                    failed_node = tree.pop()['q']
+                    failed_nodes.append(failed_node)
+                    print("Found path but collision check failed - backtracking")
                     continue
 
                 # Construct potential path
-                tree.append({'q': end_q, 'parent': len(tree) - 1})
+                tree.append({'q': end_q, 'parent': tree_idx})
                 path = []
                 idx = len(tree) - 1
+                valid_nodes = set()  # Keep track of valid nodes
+
+                # Build the path and validate
                 while idx is not None:
                     path.append(tree[idx]['q'])
+                    valid_nodes.add(idx)  # Mark this node as part of a valid path
                     idx = tree[idx]['parent']
                 path.reverse()
 
                 # Validate entire path with higher resolution
                 print("\nValidating path with high-resolution collision checking...")
                 valid_path = True
+                invalid_idx = None
+
                 for i in range(len(path) - 1):
                     start_q = path[i]
                     end_q = path[i + 1]
@@ -245,19 +256,23 @@ class RRTPlanner:
                     for t in np.linspace(0, 1, 10):
                         interp_q = start_q + t * (end_q - start_q)
                         pos = self.robot.forward_kinematics(interp_q)
-                        print(f"Checking position: x={pos[0]:.3f}, y={pos[1]:.3f}, z={pos[2]:.3f}")
                         
                         if self.obstacle_collision_check(interp_q, num_interpolation_points=20):
-                            print(f"Collision detected during high-resolution check")
+                            print(f"Collision detected during high-resolution check at point {i}")
                             valid_path = False
+                            invalid_idx = i
                             break
                     
                     if not valid_path:
                         break
 
                 if not valid_path:
-                    print("Path validation failed - removing invalid end configuration")
-                    tree.pop()  # Remove the invalid end configuration
+                    # Remove invalid nodes from the tree
+                    for i in range(len(tree) - 1, -1, -1):
+                        if i not in valid_nodes:
+                            failed_node = tree.pop(i)['q']
+                            failed_nodes.append(failed_node)
+                    print("Path validation failed - invalid nodes removed")
                     continue
 
                 print("\nFound valid path to goal!")
