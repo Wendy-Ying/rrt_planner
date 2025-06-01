@@ -34,14 +34,19 @@ def main():
     box_margin = 0.075  # 7.5cm margin
     height = 0.15      # 15cm height
     boxes_3d = np.array([
-        float(obstacle[0] - box_margin),  # x_min 
+        float(obstacle[0] - box_margin/3),  # x_min 
         float(obstacle[1] - box_margin),  # y_min
         float(obstacle[2]),               # z_min
-        float(obstacle[0] + box_margin),  # x_max
+        float(obstacle[0] + box_margin/3),  # x_max
         float(obstacle[1] + box_margin),  # y_max 
         float(obstacle[2] + height)       # z_max
     ])
 
+    # Calculate and print distances from object and goal to obstacle
+    obj_to_obstacle = np.linalg.norm([obj[0] - obstacle[0], obj[1] - obstacle[1]])
+    goal_to_obstacle = np.linalg.norm([goal[0] - obstacle[0], goal[1] - obstacle[1]])
+    print(f"Distance from object to obstacle: {obj_to_obstacle:.3f}m")
+    print(f"Distance from goal to obstacle: {goal_to_obstacle:.3f}m")
     # Initialize RRT planner
     rrt = RRTPlanner(robot, joint_limits, collision_checker, boxes_3d)
 

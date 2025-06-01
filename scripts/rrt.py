@@ -121,58 +121,6 @@ class RRTPlanner:
             return None
         return q_new
 
-    def calculate_3d_tangents(self, point, box):
-        # Ensure point is numpy array
-        point = np.array(point)
-        """Calculate tangent points from a point to a 3D box"""
-        # Convert to native Python floats to avoid numpy scalar issues
-        x_min = float(box[0])
-        y_min = float(box[1])
-        z_min = float(box[2])
-        x_max = float(box[3])
-        y_max = float(box[4])
-        z_max = float(box[5])
-        corners = np.array([
-            [x_min, y_min, z_min], [x_max, y_min, z_min],
-            [x_min, y_max, z_min], [x_max, y_max, z_min],
-            [x_min, y_min, z_max], [x_max, y_min, z_max],
-            [x_min, y_max, z_max], [x_max, y_max, z_max]
-        ])
-        
-        tangent_points = []
-        
-        # For each edge of the box
-        edges = [
-            # Vertical edges (marked with 'v')
-            ([0, 4], ('v', x_min, y_min)), ([1, 5], ('v', x_max, y_min)),
-            ([2, 6], ('v', x_min, y_max)), ([3, 7], ('v', x_max, y_max)),
-            # Horizontal edges at z_min (marked with 'h')
-            ([0, 1], ('h', z_min)), ([0, 2], ('h', z_min)),
-            ([1, 3], ('h', z_min)), ([2, 3], ('h', z_min)),
-            # Horizontal edges at z_max
-            ([4, 5], ('h', z_max)), ([4, 6], ('h', z_max)),
-            ([5, 7], ('h', z_max)), ([6, 7], ('h', z_max))
-        ]
-        
-        for edge in edges:
-            edge_type = edge[1][0]  # Get the type ('v' or 'h')
-            if edge_type == 'v':    # Vertical edge
-                # Project point onto the vertical line
-                x, y = edge[1][1], edge[1][2]  # Get coordinates from tuple
-                z = np.clip(point[2], z_min, z_max)
-                tangent_points.append(np.array([x, y, z]))
-            else:  # Horizontal edge
-                z = edge[1][1]  # Get z coordinate from tuple
-                # Get the two corner points
-                c1, c2 = corners[edge[0][0]], corners[edge[0][1]]
-                # Project point onto the line segment
-                v = c2 - c1
-                t = np.clip(np.dot(point - c1, v) / np.dot(v, v), 0, 1)
-                proj = c1 + t * v
-                tangent_points.append(proj)
-        
-        return tangent_points
-
     def check_cartesian_line(self, start_pos, end_pos, num_points=20):
         """Check if a line in Cartesian space collides with the obstacle"""
         # Ensure inputs are numpy arrays
@@ -286,58 +234,16 @@ class RRTPlanner:
             start_q = np.array(start_q)
         if end_q is not None:
             end_q = np.array(end_q)
+            
+        # Check if direct path is possible
         if self.check_cartesian_line(start_cart, end_cart):
-            print("Direct path blocked, trying intermediate points...")
+            print("Direct path blocked, using RRT planning...")
         else:
             print("Direct path possible, attempting direct planning...")
             direct_path = self.rrt_plan(start_q, end_q)
             if direct_path is not None:
                 return direct_path
-            
-        # Trying intermediate points through tangent points
-        print("\nCalculating tangent points...")
-        start_cart = np.array(start_cart)
-        end_cart = np.array(end_cart)
         
-        tangent_points = self.calculate_3d_tangents(start_cart, self.boxes_3d)
-        print(f"Found {len(tangent_points)} tangent points")
-        
-        line_vector = end_cart - start_cart
-        min_dist = float('inf')
-        best_tangent = None
-        
-        print("\nFinding best tangent point...")
-        for i, point in enumerate(tangent_points):
-            point_vector = point - start_cart
-            dist = np.linalg.norm(np.cross(point_vector, line_vector)) / np.linalg.norm(line_vector)
-            print(f"Tangent point {i}: position = {point}, distance = {dist:.6f}")
-            if dist < min_dist:
-                min_dist = dist
-                best_tangent = point
-        
-        if best_tangent is not None:
-            print(f"\nBest tangent point found at {best_tangent}")
-            print("Calculating IK for tangent point...")
-            tangent_q = self.robot.inverse_kinematics(best_tangent)
-            print(f"IK solution for tangent: {tangent_q}")
-            
-            if tangent_q is not None:
-                print("\nPlanning through tangent point...")
-                print("Planning path 1: start -> tangent")
-                path1 = self.rrt_plan(start_q, tangent_q)
-                if path1 is not None:
-                    print("Path 1 found! Planning path 2: tangent -> goal")
-                    path2 = self.rrt_plan(tangent_q, end_q)
-                    if path2 is not None:
-                        print("Path 2 found! Combining paths...")
-                        full_path = path1 + path2[1:]
-                        print(f"Combined path length: {len(full_path)}")
-                        return full_path
-                    else:
-                        print("Failed to find path 2 (tangent -> goal)")
-                else:
-                    print("Failed to find path 1 (start -> tangent)")
-        
-        # If all else fails, try direct RRT planning again
-        print("Attempting direct RRT planning...")
+        # If direct path failed or is blocked, just use RRT planning
+        print("Using RRT planning...")
         return self.rrt_plan(start_q, end_q)
