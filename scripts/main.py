@@ -34,16 +34,34 @@ def main():
     detector = ObstacleDetector(pipeline, align)
     boxes_3d = detector.get_world_bounding_boxes(visualize=False)
 
+    # Get positions and ensure they are numpy arrays
     obj, goal, obstacle = detect(pipeline, align)
+    obj = np.array(obj)
+    goal = np.array(goal)
+    obstacle = np.array(obstacle)
+
+    # Convert angles to radians using numpy operations
     init = np.array([357, 21, 150, 272, 320, 273]) / 180 * np.pi
     final = np.array([0, 343, 75, 0, 300, 0]) / 180 * np.pi
+
+    # Calculate grasp and offset positions
     obj_grasp = obj + np.array([0, 0.02, 0])
     obj_offset = obj + np.array([0, 0, 0.05])
+
     print(f"Detected object: {obj}")
     print(f"Goal position: {goal}")
     print(f"Obstacle position: {obstacle}")
 
-    boxes_3d = np.array([obstacle[0]-0.02, obstacle[1]-0.02, obstacle[2], obstacle[0]+0.02, obstacle[1]+0.02, obstacle[2]+0.2])
+    # Create obstacle bounding box with margin
+    margin = 0.02
+    boxes_3d = np.array([
+        float(obstacle[0] - margin),  # x_min
+        float(obstacle[1] - margin),  # y_min
+        float(obstacle[2]),           # z_min
+        float(obstacle[0] + margin),  # x_max
+        float(obstacle[1] + margin),  # y_max
+        float(obstacle[2] + 0.2)      # z_max
+    ])
 
     rrt = RRTPlanner(robot, joint_limits, collision_checker, boxes_3d)
     prm = PRMPlanner(robot, joint_limits, boxes_3d)

@@ -30,7 +30,7 @@ class NLinkArm:
         for i, (alpha, a, d, theta) in enumerate(self.dh_params):
             T_i = self.dh_transform(alpha, a, d, theta + joint_angles[i])
             T = T @ T_i
-        return T[:3, 3]  # (x, y, z)
+        return np.array(T[:3, 3])  # (x, y, z) as a new array, not a view
 
     def get_joint_positions(self, q):
         positions = [np.array([0.0, 0.0, 0.0])]
@@ -40,30 +40,45 @@ class NLinkArm:
             theta = theta_offset + q[i]
             T_i = self.dh_transform(alpha, a, d, theta)
             T = T @ T_i
-            positions.append(T[:3, 3])
-        return np.array(positions)
+            positions.append(np.array(T[:3, 3]))  # Make a copy of each position
+        return np.array(positions)  # Convert list to array
 
     def inverse_kinematics(self, target_pos, q_init=np.array([357, 21, 150, 272, 320, 273]) / 180 * np.pi, max_iter=100, tol=1e-3, alpha=0.5):
+        print(f"\nStarting IK for target position: {target_pos}")
         if q_init is None:
             q = np.zeros(len(self.dh_params))
         else:
             q = np.array(q_init)
+            print(f"Initial joint angles: {q}")
 
-        for _ in range(max_iter):
+        weights = np.array([2.0, 2.0, 0.5, 1.0, 0.1, 0.1])
+        print(f"Using weights: {weights}")
+
+        for iter_count in range(max_iter):
             current_pos = self.forward_kinematics(q)
             error = target_pos - current_pos
-            if np.linalg.norm(error) < tol:
+            error_norm = np.linalg.norm(error)
+            
+            if iter_count % 10 == 0:  # Print every 10 iterations
+                print(f"IK iteration {iter_count}: error = {error_norm:.6f}")
+                print(f"Current position: {current_pos}")
+                print(f"Current angles: {q}")
+
+            if error_norm < tol:
+                print(f"IK converged after {iter_count} iterations")
                 return q
 
             J = self.jacobian_numerical(q)
-            weights = np.array([2.0, 2.0, 0.5, 1.0, 0.1, 0.1])
             try:
                 dq = alpha * self.weighted_pseudo_inverse(J, weights).dot(error)
             except np.linalg.LinAlgError:
+                print("IK failed: Pseudo-inverse calculation error")
                 return None
 
             q = self.wrap_to_joint_limits(q + dq)
 
+        print(f"IK failed to converge after {max_iter} iterations")
+        print(f"Final error: {error_norm:.6f}")
         return None  # failed to converge
 
     def jacobian_numerical(self, q, delta=1e-6):
