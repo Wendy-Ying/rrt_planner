@@ -181,6 +181,9 @@ class RRTPlanner:
                     idx = tree[idx]['parent']
                 path.reverse()
                 print(f"Path length: {len(path)}")
+                for q in path:
+                    pos = self.robot.forward_kinematics(q)
+                    print(f"Waypoint position: x={pos[0]}, y={pos[1]}, z={pos[2]}")
                 return path
             
         for i in reversed(range(len(tree))):

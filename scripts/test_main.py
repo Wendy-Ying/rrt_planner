@@ -11,7 +11,7 @@ from kinematics import NLinkArm
 def main():
     # Define positions as numpy arrays
     obj = np.array([0.166, 0.148, 0], dtype=float)      # Object position
-    obstacle = np.array([0.367, 0.11, 0], dtype=float)  # Obstacle position
+    obstacle = np.array([0.351, 0.155, 0], dtype=float)  # Obstacle position
     goal = np.array([0.552, 0.131, 0], dtype=float)     # Goal position
 
     # Robot parameters
@@ -31,7 +31,7 @@ def main():
     collision_checker = CollisionChecker(dh_params)
     
     # Set up obstacle box (15cm×15cm×15cm)
-    box_margin = 0.075  # 7.5cm margin
+    box_margin = 0.3  # 7.5cm margin
     height = 0.15      # 15cm height
     boxes_3d = np.array([
         float(obstacle[0] - box_margin/3),  # x_min 
@@ -81,9 +81,9 @@ def main():
                 print("Failed to reach object")
                 return
 
-            print("\nObject reached, closing gripper...")
-            pid_angle_control.send_gripper_command(base, 0.3)  
-            time.sleep(3.0)  # Wait for gripper to close
+            # print("\nObject reached, closing gripper...")
+            # pid_angle_control.send_gripper_command(base, 0.3)  
+            # time.sleep(3.0)  # Wait for gripper to close
 
             # Plan and execute motion to goal position
             print("\nPlanning path to goal...")
@@ -100,9 +100,9 @@ def main():
                 print("Failed to reach goal")
                 return
 
-            print("\nGoal reached, opening gripper...")
-            pid_angle_control.send_gripper_command(base, 0.9)  # Open gripper (90% open)
-            time.sleep(1.0)  # Wait for gripper to open
+            # print("\nGoal reached, opening gripper...")
+            # pid_angle_control.send_gripper_command(base, 0.9)  # Open gripper (90% open)
+            # time.sleep(1.0)  # Wait for gripper to open
 
             print("\nMotion completed successfully!")
 
