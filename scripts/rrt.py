@@ -14,17 +14,52 @@ class RRTPlanner:
     def sample_q(self, end_q, start_q):
         if np.random.rand() < self.goal_sample_rate:
             return end_q
-        
-        bias = np.random.rand() * (end_q - start_q)
 
+        # Get current ee positions
+        start_ee = np.array(self.robot.forward_kinematics(start_q))
+        end_ee = np.array(self.robot.forward_kinematics(end_q))
+        
+        # Calculate box boundaries with margin for avoidance
+        x_min = float(self.boxes_3d[0])
+        y_min = float(self.boxes_3d[1])
+        z_min = float(self.boxes_3d[2])
+        x_max = float(self.boxes_3d[3])
+        y_max = float(self.boxes_3d[4])
+        z_max = float(self.boxes_3d[5])
+        
+        # If path would cross the obstacle, try to sample around it
+        if (min(start_ee[0], end_ee[0]) < x_max and max(start_ee[0], end_ee[0]) > x_min and
+            min(start_ee[1], end_ee[1]) < y_max and max(start_ee[1], end_ee[1]) > y_min):
+            # Sample with bias to avoid obstacle
+            if start_ee[1] < y_min:  # If start is below obstacle, bias downward
+                bias_y = -0.2
+            else:  # If start is above obstacle, bias upward
+                bias_y = 0.2
+            
+            # Apply bias to random sample
+            for _ in range(10):  # Try up to 10 times
+                bias = np.random.rand() * (end_q - start_q)
+                noise_std = 0.1 * np.ones(start_q.size)
+                active_joints = [0, 1, 2, 4]
+                for j in active_joints:
+                    noise_std[j] = 0.3
+                noise = np.random.randn(start_q.size) * noise_std
+                candidate = start_q + bias + noise
+                
+                # Check if this configuration avoids the obstacle
+                ee_pos = self.robot.forward_kinematics(candidate)
+                if not (x_min - 0.1 <= ee_pos[0] <= x_max + 0.1 and
+                       y_min - 0.1 <= ee_pos[1] <= y_max + 0.1):
+                    return np.clip(candidate, self.joint_limits[:, 0], self.joint_limits[:, 1])
+        
+        # Default sampling if no obstacle avoidance needed
+        bias = np.random.rand() * (end_q - start_q)
         noise_std = 0.1 * np.ones(start_q.size)
         active_joints = [0, 1, 2, 4]
         for j in active_joints:
             noise_std[j] = 0.3
-
         noise = np.random.randn(start_q.size) * noise_std
-
-        candidate = start_q + bias + noise + np.random.randn(start_q.size)
+        candidate = start_q + bias + noise
         return np.clip(candidate, self.joint_limits[:, 0], self.joint_limits[:, 1])
 
     def ee_dist(self, q1, q2):
@@ -77,6 +112,8 @@ class RRTPlanner:
         # Ensure inputs are numpy arrays
         q = np.array(q)
         joint_positions = np.array(self.robot.get_joint_positions(q))
+        ee_position = np.array(self.robot.forward_kinematics(q))
+        
         # Convert box boundaries to native Python floats
         x_min = float(self.boxes_3d[0])
         y_min = float(self.boxes_3d[1])
@@ -85,23 +122,32 @@ class RRTPlanner:
         y_max = float(self.boxes_3d[4])
         z_max = float(self.boxes_3d[5])
 
+        # First check end-effector position with larger margins
+        margin_xy = 0.1  # 10cm margin in xy plane
+        margin_z = 0.05  # 5cm margin in z direction
+        
+        if (x_min - margin_xy <= ee_position[0] <= x_max + margin_xy and
+            y_min - margin_xy <= ee_position[1] <= y_max + margin_xy and
+            z_min - margin_z <= ee_position[2] <= z_max + margin_z):
+            print(f"\nEnd-effector collision detected!")
+            print(f"EE Position: x={ee_position[0]:.3f}, y={ee_position[1]:.3f}, z={ee_position[2]:.3f}")
+            print(f"Box bounds + margin: x=[{x_min - margin_xy:.3f}, {x_max + margin_xy:.3f}]")
+            print(f"                    y=[{y_min - margin_xy:.3f}, {y_max + margin_xy:.3f}]")
+            print(f"                    z=[{z_min - margin_z:.3f}, {z_max + margin_z:.3f}]")
+            return True
+
+        # Then check intermediate points between joints with smaller margins
         for i in range(joint_positions.shape[0] - 1):
             start = np.array(joint_positions[i])
             end = np.array(joint_positions[i + 1])
 
             for alpha in np.linspace(0, 1, num_interpolation_points):
                 point = np.array((1 - alpha) * start + alpha * end)
-                # Box boundaries with margin
-                margin = 0
-                x_check_min = x_min - margin
-                y_check_min = y_min - margin
-                z_check_min = z_min - margin
-                x_check_max = x_max + margin
-                y_check_max = y_max + margin
-                z_check_max = z_max + margin
-                if (x_check_min <= point[0] <= x_check_max and
-                    y_check_min <= point[1] <= y_check_max and
-                    z_check_min <= point[2] <= z_check_max):
+                margin = 0.05  # 5cm margin for robot links
+                if (x_min - margin <= point[0] <= x_max + margin and
+                    y_min - margin <= point[1] <= y_max + margin and
+                    z_min - margin <= point[2] <= z_max + margin):
+                    print(f"Joint link collision detected at position: {point}")
                     return True
         return False
 
@@ -126,6 +172,7 @@ class RRTPlanner:
         # Ensure inputs are numpy arrays
         start_pos = np.array(start_pos)
         end_pos = np.array(end_pos)
+        
         # Convert box boundaries to native Python floats
         x_min = float(self.boxes_3d[0])
         y_min = float(self.boxes_3d[1])
@@ -134,15 +181,20 @@ class RRTPlanner:
         y_max = float(self.boxes_3d[4])
         z_max = float(self.boxes_3d[5])
         
+        # Add safety margin for obstacle avoidance
+        margin_xy = 0.1  # 10cm margin in xy plane
+        margin_z = 0.05  # 5cm margin in z direction
+        
         # Check multiple points along the line
         for t in np.linspace(0, 1, num_points):
             point = start_pos + t * (end_pos - start_pos)
             point = np.array(point)  # Ensure point is array
             
-            # Check if point is inside obstacle
-            if (x_min <= point[0] <= x_max and
-                y_min <= point[1] <= y_max and
-                z_min <= point[2] <= z_max):
+            # Check if point is inside obstacle (with margin)
+            if (x_min - margin_xy <= point[0] <= x_max + margin_xy and
+                y_min - margin_xy <= point[1] <= y_max + margin_xy and
+                z_min - margin_z <= point[2] <= z_max + margin_z):
+                print(f"Cartesian path collision at point: [{point[0]:.3f}, {point[1]:.3f}, {point[2]:.3f}]")
                 return True  # Collision detected
                 
         return False  # No collision
@@ -172,7 +224,8 @@ class RRTPlanner:
                 if self.collision_check_line(q_new, end_q):
                     print("Found path but collision check failed")
                     continue
-                print("Found valid path to goal!")
+
+                # Construct potential path
                 tree.append({'q': end_q, 'parent': len(tree) - 1})
                 path = []
                 idx = len(tree) - 1
@@ -180,10 +233,39 @@ class RRTPlanner:
                     path.append(tree[idx]['q'])
                     idx = tree[idx]['parent']
                 path.reverse()
+
+                # Validate entire path with higher resolution
+                print("\nValidating path with high-resolution collision checking...")
+                valid_path = True
+                for i in range(len(path) - 1):
+                    start_q = path[i]
+                    end_q = path[i + 1]
+                    
+                    # Check multiple points along segment with higher resolution
+                    for t in np.linspace(0, 1, 10):
+                        interp_q = start_q + t * (end_q - start_q)
+                        pos = self.robot.forward_kinematics(interp_q)
+                        print(f"Checking position: x={pos[0]:.3f}, y={pos[1]:.3f}, z={pos[2]:.3f}")
+                        
+                        if self.obstacle_collision_check(interp_q, num_interpolation_points=20):
+                            print(f"Collision detected during high-resolution check")
+                            valid_path = False
+                            break
+                    
+                    if not valid_path:
+                        break
+
+                if not valid_path:
+                    print("Path validation failed - removing invalid end configuration")
+                    tree.pop()  # Remove the invalid end configuration
+                    continue
+
+                print("\nFound valid path to goal!")
                 print(f"Path length: {len(path)}")
-                for q in path:
+                print("\nFinal path waypoints:")
+                for i, q in enumerate(path):
                     pos = self.robot.forward_kinematics(q)
-                    print(f"Waypoint position: x={pos[0]}, y={pos[1]}, z={pos[2]}")
+                    print(f"Waypoint {i} position: x={pos[0]:.3f}, y={pos[1]:.3f}, z={pos[2]:.3f}")
                 return path
             
         for i in reversed(range(len(tree))):
