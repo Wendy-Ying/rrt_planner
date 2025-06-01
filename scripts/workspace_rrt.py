@@ -1,7 +1,7 @@
 import numpy as np
 
 class WorkspaceRRT:
-    def __init__(self, obstacle, step_size=0.05, clearance=0.15, min_height=0.1):
+    def __init__(self, obstacle, step_size=0.05, clearance=0.15, min_height=0.0):
         # Store obstacle boundaries
         self.x_min = float(obstacle[0])
         self.y_min = float(obstacle[1])

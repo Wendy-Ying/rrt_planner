@@ -12,7 +12,7 @@ class RRTPlanner:
         self.max_iter = max_iter
         self.goal_sample_rate = goal_sample_rate
         self.n_steps = n_steps
-        self.min_height = 0.1  # Minimum allowed height for end-effector
+        self.min_height = 0.0  # Minimum allowed height for end-effector
         
         # Initialize workspace planner
         self.workspace_planner = WorkspaceRRT(obstacle, step_size=step_size, min_height=self.min_height)
