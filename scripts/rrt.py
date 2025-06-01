@@ -1,7 +1,9 @@
 import numpy as np
 
+from workspace_rrt import WorkspaceRRT
+
 class RRTPlanner:
-    def __init__(self, robot, joint_limits, collison_checker, obstacle, step_size=0.05, max_iter=1000, goal_sample_rate=0.1, n_steps=5):
+    def __init__(self, robot, joint_limits, collison_checker, obstacle, step_size=0.05, max_iter=1000, goal_sample_rate=0.2, n_steps=3):
         self.robot = robot
         self.joint_limits = np.array(joint_limits)
         self.collion_checker = collison_checker
@@ -10,6 +12,9 @@ class RRTPlanner:
         self.max_iter = max_iter
         self.goal_sample_rate = goal_sample_rate
         self.n_steps = n_steps
+        
+        # Initialize workspace planner
+        self.workspace_planner = WorkspaceRRT(obstacle, step_size=step_size)
 
     def sample_q(self, end_q, start_q):
         if np.random.rand() < self.goal_sample_rate:
@@ -301,49 +306,64 @@ class RRTPlanner:
         return None
 
     def plan(self, start_q, end_q):
-        """Plan a path considering direct path and obstacle avoidance"""
+        """Plan a path using workspace-guided RRT"""
         # Convert inputs to numpy arrays
         start_q = np.array(start_q)
         end_q = np.array(end_q)
-        
-        # Convert to Cartesian space if needed
+
+        # Get Cartesian positions
         if start_q.size == 3:  # 3D position input
-            start_cart = start_q
+            start_pos = start_q
             start_q = self.robot.inverse_kinematics(start_q)
-            print(f"IK start: {start_q}")
             if start_q is None:
                 raise ValueError("IK failed for start position")
-            start_q = np.array(start_q)
         else:  # Joint angles input
-            start_cart = np.array(self.robot.forward_kinematics(start_q))
-            
+            start_pos = self.robot.forward_kinematics(start_q)
+
         if end_q.size == 3:  # 3D position input
-            end_cart = np.array(end_q)
+            end_pos = end_q
             end_q = self.robot.inverse_kinematics(end_q)
-            print(f"IK end: {end_q}")
             if end_q is None:
                 raise ValueError("IK failed for end position")
-            end_q = np.array(end_q)
         else:  # Joint angles input
-            end_cart = np.array(self.robot.forward_kinematics(end_q))
+            end_pos = self.robot.forward_kinematics(end_q)
 
-        # Ensure all positions are numpy arrays
-        start_cart = np.array(start_cart)
-        end_cart = np.array(end_cart)
-        if start_q is not None:
-            start_q = np.array(start_q)
-        if end_q is not None:
-            end_q = np.array(end_q)
-            
-        # Check if direct path is possible
-        if self.check_cartesian_line(start_cart, end_cart):
-            print("Direct path blocked, using RRT planning...")
+        # Plan path in workspace
+        print("\nPlanning path in workspace...")
+        workspace_path = self.workspace_planner.plan(np.array(start_pos), np.array(end_pos))
+        print(f"Workspace path points: {len(workspace_path)}")
+        for i, point in enumerate(workspace_path):
+            print(f"Point {i}: x={point[0]:.3f}, y={point[1]:.3f}, z={point[2]:.3f}")
+
+        # Convert workspace path to joint space path
+        joint_path = []
+        current_q = start_q
+
+        # Follow workspace waypoints
+        print("\nPlanning joint space path through workspace waypoints...")
+        for i, waypoint in enumerate(workspace_path[1:]):  # Skip first point (start)
+            print(f"\nPlanning to waypoint {i+1}")
+            # Get joint configuration for waypoint
+            target_q = self.robot.inverse_kinematics(waypoint)
+            if target_q is None:
+                print(f"Failed to find IK solution for waypoint {i+1}")
+                continue
+
+            # Plan path to this waypoint
+            path_segment = self.rrt_plan(current_q, target_q)
+            if path_segment is None:
+                print(f"Failed to plan path to waypoint {i+1}")
+                continue
+
+            joint_path.extend(path_segment[:-1])  # Exclude last point to avoid duplicates
+            current_q = path_segment[-1]
+
+        # Add final configuration
+        joint_path.append(current_q)
+
+        if len(joint_path) > 1:
+            print("\nSuccessfully planned full path!")
+            return joint_path
         else:
-            print("Direct path possible, attempting direct planning...")
-            direct_path = self.rrt_plan(start_q, end_q)
-            if direct_path is not None:
-                return direct_path
-        
-        # If direct path failed or is blocked, just use RRT planning
-        print("Using RRT planning...")
-        return self.rrt_plan(start_q, end_q)
+            print("\nFailed to plan full path")
+            return None
