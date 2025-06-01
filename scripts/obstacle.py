@@ -117,11 +117,11 @@ class ObstacleDetector:
 
             # inflate bounding box
             x_min -= 0.05
-            y_min -= 0.05
-            z_min -= 0.05
-            x_max += 0.05
-            y_max += 0.05
-            z_max += 0.05
+            y_min += 0.05
+            z_min -= 0.1
+            x_max -= 0
+            y_max += 0.1
+            z_max += 0.1
 
             boxes_3d.append((x_min, y_min, z_min, x_max, y_max, z_max))
 

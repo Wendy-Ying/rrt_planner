@@ -5,6 +5,7 @@ from perception import init_realsense, detect
 from collision import CollisionChecker
 from obstacle import ObstacleDetector
 from rrt import RRTPlanner
+from prm import PRMPlanner
 from kinematics import NLinkArm
 from optimize import BSplineOptimizer
 from visualize import plot_cartesian_trajectory
@@ -32,45 +33,53 @@ def main():
     collision_checker = CollisionChecker(dh_params)
     detector = ObstacleDetector(pipeline, align)
     boxes_3d = detector.get_world_bounding_boxes(visualize=False)
-    print(f"box: {boxes_3d}")
 
-    rrt = RRTPlanner(robot, joint_limits, collision_checker, boxes_3d)
-    optimizer = BSplineOptimizer(robot, degree=3, num_points=5)
-
-    obj, goal = detect(pipeline, align)
-    init=np.array([357, 21, 150, 272, 320, 273]) / 180 * np.pi
+    obj, goal, obstacle = detect(pipeline, align)
+    init = np.array([357, 21, 150, 272, 320, 273]) / 180 * np.pi
+    final = np.array([0, 343, 75, 0, 300, 0]) / 180 * np.pi
+    obj_grasp = obj + np.array([0, 0.02, 0])
+    obj_offset = obj + np.array([0, 0, 0.05])
     print(f"Detected object: {obj}")
     print(f"Goal position: {goal}")
+    print(f"Obstacle position: {obstacle}")
+
+    boxes_3d = np.array([obstacle[0]-0.02, obstacle[1]-0.02, obstacle[2], obstacle[0]+0.02, obstacle[1]+0.02, obstacle[2]+0.2])
+
+    rrt = RRTPlanner(robot, joint_limits, collision_checker, boxes_3d)
+    prm = PRMPlanner(robot, joint_limits, boxes_3d)
+    optimizer = BSplineOptimizer(robot, degree=3, num_points=5)
 
     args = utilities.parseConnectionArguments()
 
-    path = rrt.plan(init, obj)
+    # path = rrt.plan(init, obj_grasp)
     
 
-    if path:
-        smooth_path = optimizer.optimize(path)
-        for i, q in enumerate(smooth_path):
-            print(f"Step {i}: {q}")
-        with utilities.DeviceConnection.createTcpConnection(args) as router:
-            base = BaseClient(router)
-            success = pid_angle_control.execute_path(base, smooth_path)
-            pid_angle_control.send_gripper_command(base, 1.0)
-            if not success:
-                print("Path execution failed")
-            else:
-                print("Path execution completed successfully")
+    # if path:
+    #     smooth_path = optimizer.optimize(path)
+    #     for i, q in enumerate(smooth_path):
+    #         print(f"Step {i}: {q}")
+    #     with utilities.DeviceConnection.createTcpConnection(args) as router:
+    #         base = BaseClient(router)
+    #         pid_angle_control.send_gripper_command(base, 0.1)
+    #         success = pid_angle_control.execute_path(base, smooth_path)
+    #         pid_angle_control.send_gripper_command(base, 1)
+    #         if not success:
+    #             print("Path execution failed")
+    #         else:
+    #             print("Path execution completed successfully")
     
     
     # plot_cartesian_trajectory(smooth_path, robot)
 
-    path = rrt.plan(obj, goal)
+    path = rrt.plan(obj_offset, goal)
+    # path = prm.plan(obj_offset, goal)
     if path:
         smooth_path = optimizer.optimize(path)
-        for i, q in enumerate(smooth_path):
+        for i, q in enumerate(path):
             print(f"Step {i}: {q}")
         with utilities.DeviceConnection.createTcpConnection(args) as router:
             base = BaseClient(router)
-            success = pid_angle_control.execute_path(base, smooth_path)
+            success = pid_angle_control.execute_path(base, path)
             pid_angle_control.send_gripper_command(base, 0)
         if not success:
             print("Path execution failed")
@@ -78,11 +87,25 @@ def main():
             print("Path execution completed successfully")
 
     # plot_cartesian_trajectory(smooth_path, robot)
-    
+
+    # path = rrt.plan(goal, final)
+    # if path:
+    #     smooth_path = optimizer.optimize(path)
+    #     for i, q in enumerate(smooth_path):
+    #         print(f"Step {i}: {q}")
+    #     with utilities.DeviceConnection.createTcpConnection(args) as router:
+    #         base = BaseClient(router)
+    #         success = pid_angle_control.execute_path(base, smooth_path)
+    #         if not success:
+    #             print("Path execution failed")
+    #         else:
+    #             print("Path execution completed successfully")
+
     pipeline.stop()
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(f"An error occurred: {e}")
+    # try:
+    #     main()
+    # except Exception as e:
+    #     print(f"An error occurred: {e}")
+    main()
