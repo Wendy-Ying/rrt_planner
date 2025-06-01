@@ -1,7 +1,7 @@
 import numpy as np
 
 class WorkspaceRRT:
-    def __init__(self, obstacle, step_size=0.05, clearance=0.15):
+    def __init__(self, obstacle, step_size=0.05, clearance=0.15, min_height=0.1):
         # Store obstacle boundaries
         self.x_min = float(obstacle[0])
         self.y_min = float(obstacle[1])
@@ -11,6 +11,7 @@ class WorkspaceRRT:
         self.z_max = float(obstacle[5])
         self.step_size = step_size
         self.clearance = clearance
+        self.min_height = min_height  # Minimum safety height for end-effector
 
     def get_intermediate_target(self, start_pos, end_pos):
         """Generate intermediate target to guide end-effector around obstacle"""
@@ -27,16 +28,23 @@ class WorkspaceRRT:
             y_target = self.y_max + self.clearance
 
         # Create waypoint at x position of obstacle but offset in y
+        # Ensure z coordinate is never below 0
+        z_target = max(self.min_height, (start_pos[2] + end_pos[2]) / 2)
+        
         intermediate_target = np.array([
             obstacle_center_x,  # x at obstacle center
             y_target,          # y with clearance above/below
-            (start_pos[2] + end_pos[2]) / 2  # z halfway between start and end
+            z_target          # z coordinate with minimum height constraint
         ])
 
         return intermediate_target
 
     def plan(self, start_pos, end_pos):
         """Plan a path in workspace that avoids obstacles"""
+        # Enforce minimum z height for start and end positions
+        start_pos = np.array([start_pos[0], start_pos[1], max(self.min_height, start_pos[2])])
+        end_pos = np.array([end_pos[0], end_pos[1], max(self.min_height, end_pos[2])])
+        
         path = []
         path.append(start_pos)
 
@@ -44,11 +52,13 @@ class WorkspaceRRT:
         if self._check_line_obstacle_intersection(start_pos, end_pos):
             # Generate intermediate target to avoid obstacle
             via_point = self.get_intermediate_target(start_pos, end_pos)
-            
-            # Add intermediate point
+            # Intermediate point already has z≥0 enforced in get_intermediate_target
             path.append(via_point)
 
         path.append(end_pos)
+        print("\nWorkspace path:")
+        for i, point in enumerate(path):
+            print(f"Point {i}: x={point[0]:.3f}, y={point[1]:.3f}, z={point[2]:.3f}")
         return path
 
     def _check_line_obstacle_intersection(self, start, end):
@@ -56,8 +66,10 @@ class WorkspaceRRT:
         # Check multiple points along the line
         for t in np.linspace(0, 1, 20):
             point = start + t * (end - start)
+            point = np.array([point[0], point[1], max(self.min_height, point[2])])  # Enforce minimum z height
             if (self.x_min <= point[0] <= self.x_max and
                 self.y_min <= point[1] <= self.y_max and
                 self.z_min <= point[2] <= self.z_max):
+                print(f"Line intersects obstacle at point: {point}")
                 return True
         return False

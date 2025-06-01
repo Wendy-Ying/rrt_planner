@@ -11,7 +11,7 @@ from kinematics import NLinkArm
 def main():
     # Define positions as numpy arrays
     obj = np.array([0.166, 0.148, 0], dtype=float)      # Object position
-    obstacle = np.array([0.351, 0.155, 0], dtype=float)  # Obstacle position
+    obstacle = np.array([0.357, 0.168, 0], dtype=float)  # Obstacle position
     goal = np.array([0.552, 0.131, 0], dtype=float)     # Goal position
 
     # Robot parameters
@@ -31,7 +31,7 @@ def main():
     collision_checker = CollisionChecker(dh_params)
     
     # Set up obstacle box (15cm×15cm×15cm)
-    box_margin = 0.3  # 7.5cm margin
+    box_margin = 0.075 # 7.5cm margin
     height = 0.15      # 15cm height
     boxes_3d = np.array([
         float(obstacle[0] - box_margin/3),  # x_min 

@@ -12,9 +12,10 @@ class RRTPlanner:
         self.max_iter = max_iter
         self.goal_sample_rate = goal_sample_rate
         self.n_steps = n_steps
+        self.min_height = 0.1  # Minimum allowed height for end-effector
         
         # Initialize workspace planner
-        self.workspace_planner = WorkspaceRRT(obstacle, step_size=step_size)
+        self.workspace_planner = WorkspaceRRT(obstacle, step_size=step_size, min_height=self.min_height)
 
     def sample_q(self, end_q, start_q):
         if np.random.rand() < self.goal_sample_rate:
@@ -110,6 +111,11 @@ class RRTPlanner:
             return True
         return False
 
+    def is_ee_height_valid(self, q):
+        """Check if end-effector height is above minimum"""
+        ee_pos = self.robot.forward_kinematics(q)
+        return ee_pos[2] >= self.min_height
+
     def obstacle_collision_check(self, q, num_interpolation_points=10):
         if self.boxes_3d.size == 0:
             return False
@@ -129,7 +135,13 @@ class RRTPlanner:
         # print(f"y_min={y_min:.3f}, y_max={y_max:.3f}, ")
         # print(f"z_min={z_min:.3f}, z_max={z_max:.3f}, ")
 
-        # Check 
+        # Check height constraint
+        if ee_position[2] < self.min_height:
+            print(f"\nEnd-effector below minimum height!")
+            print(f"EE Position: x={ee_position[0]:.3f}, y={ee_position[1]:.3f}, z={ee_position[2]:.3f}")
+            return True
+
+        # Check obstacle collision
         if (x_min <= ee_position[0] <= x_max and
             y_min <= ee_position[1] <= y_max and
             z_min <= ee_position[2] <= z_max):
