@@ -5,7 +5,7 @@ class RRTPlanner:
         self.robot = robot
         self.joint_limits = np.array(joint_limits)
         self.collion_checker = collison_checker
-        self.boxes_3d = obstacle
+        self.boxes_3d = np.array(obstacle)
         self.step_size = step_size
         self.max_iter = max_iter
         self.goal_sample_rate = goal_sample_rate
@@ -17,14 +17,14 @@ class RRTPlanner:
         
         bias = np.random.rand() * (end_q - start_q)
 
-        noise_std = 0.1 * np.ones(len(start_q))
+        noise_std = 0.1 * np.ones(start_q.size)
         active_joints = [0, 1, 2, 4]
         for j in active_joints:
             noise_std[j] = 0.3
 
-        noise = np.random.randn(len(start_q)) * noise_std
+        noise = np.random.randn(start_q.size) * noise_std
 
-        candidate = start_q + bias + noise + np.random.randn(len(start_q))
+        candidate = start_q + bias + noise + np.random.randn(start_q.size)
         return np.clip(candidate, self.joint_limits[:, 0], self.joint_limits[:, 1])
 
     def ee_dist(self, q1, q2):
@@ -49,7 +49,8 @@ class RRTPlanner:
             else:
                 return angle >= low or angle <= high
 
-        for i in range(len(q)):
+        q = np.array(q)
+        for i in range(q.size):
             if not is_angle_within_limit(q[i], self.joint_limits[i, 0], self.joint_limits[i, 1]):
                 return False
         return True
@@ -70,12 +71,12 @@ class RRTPlanner:
         return False
 
     def obstacle_collision_check(self, q, num_interpolation_points=10):
-        if len(self.boxes_3d) == 0:
+        if self.boxes_3d.size == 0:
             return False
 
         joint_positions = self.robot.get_joint_positions(q)
 
-        for i in range(len(joint_positions) - 1):
+        for i in range(joint_positions.shape[0] - 1):
             start = joint_positions[i]
             end = joint_positions[i + 1]
 
@@ -215,36 +216,41 @@ class RRTPlanner:
 
     def plan(self, start_q, end_q):
         """Plan a path considering direct path and obstacle avoidance"""
+        # Convert inputs to numpy arrays
+        start_q = np.array(start_q)
+        end_q = np.array(end_q)
+        
         # Convert to Cartesian space if needed
-        if len(start_q) == 3:
+        if start_q.size == 3:  # 3D position input
             start_cart = start_q
             start_q = self.robot.inverse_kinematics(start_q)
             print(f"IK start: {start_q}")
             if start_q is None:
                 raise ValueError("IK failed for start position")
             start_q = np.array(start_q)
-        else:
+        else:  # Joint angles input
             start_cart = self.robot.forward_kinematics(start_q)
             
-        if len(end_q) == 3:
+        if end_q.size == 3:  # 3D position input
             end_cart = end_q
             end_q = self.robot.inverse_kinematics(end_q)
             print(f"IK end: {end_q}")
             if end_q is None:
                 raise ValueError("IK failed for end position")
             end_q = np.array(end_q)
-        else:
+        else:  # Joint angles input
             end_cart = self.robot.forward_kinematics(end_q)
             
-        # Check if direct path is possible
-        if not self.check_cartesian_line(start_cart, end_cart):
+        # Check if direct path is blocked by obstacle
+        if self.check_cartesian_line(start_cart, end_cart):
+            print("Direct path blocked, trying intermediate points...")
+        else:
             print("Direct path possible, attempting direct planning...")
             direct_path = self.rrt_plan(start_q, end_q)
             if direct_path is not None:
                 return direct_path
             
-        # Try using intermediate points
-        print("Using intermediate points around obstacle...")
+        # Direct path not possible, try intermediate points
         tangent_points = self.calculate_3d_tangents(start_cart, self.boxes_3d)
         line_vector = end_cart - start_cart
         min_dist = float('inf')
