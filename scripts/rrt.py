@@ -1,7 +1,7 @@
 import numpy as np
 
 class RRTPlanner:
-    def __init__(self, robot, joint_limits, collison_checker, obstacle, step_size=0.05, max_iter=1000, goal_sample_rate=0.2, n_steps=5):
+    def __init__(self, robot, joint_limits, collison_checker, obstacle, step_size=0.05, max_iter=1000, goal_sample_rate=0.1, n_steps=5):
         self.robot = robot
         self.joint_limits = np.array(joint_limits)
         self.collion_checker = collison_checker
