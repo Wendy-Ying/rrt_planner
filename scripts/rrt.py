@@ -11,21 +11,82 @@ class RRTPlanner:
         self.goal_sample_rate = goal_sample_rate
         self.n_steps = n_steps
 
-    def sample_q(self, end_q, start_q):
-        if np.random.rand() < self.goal_sample_rate:
-            return end_q
-        
-        bias = np.random.rand() * (end_q - start_q)
+    def get_obstacle_distance(self, point):
+        """Calculate minimum distance from a point to obstacle box"""
+        # Convert to native Python floats
+        x_min = float(self.boxes_3d[0])
+        y_min = float(self.boxes_3d[1])
+        z_min = float(self.boxes_3d[2])
+        x_max = float(self.boxes_3d[3])
+        y_max = float(self.boxes_3d[4])
+        z_max = float(self.boxes_3d[5])
 
+        # Calculate distance components
+        dx = max(x_min - point[0], 0, point[0] - x_max)
+        dy = max(y_min - point[1], 0, point[1] - y_max)
+        dz = max(z_min - point[2], 0, point[2] - z_max)
+        
+        return np.sqrt(dx*dx + dy*dy + dz*dz)
+
+    def get_position_bias(self, pos):
+        """Calculate position-based bias for sampling"""
+        dist = self.get_obstacle_distance(pos)
+        return np.exp(-dist / 0.2)  # Distance decay factor
+
+    def generate_safe_sample(self):
+        """Generate configuration biased towards safe regions with lower thresholds"""
+        best_dist = 0
+        best_q = None
+        min_acceptable_dist = 0.05  # 5cm minimum acceptable distance
+        
+        for _ in range(20):  # Try more attempts for better samples
+            q = np.random.uniform(self.joint_limits[:, 0], self.joint_limits[:, 1])
+            pos = self.robot.forward_kinematics(q)
+            dist = self.get_obstacle_distance(pos)
+            
+            # Return immediately if distance is acceptable
+            if dist > min_acceptable_dist:
+                print(f"Found safe sample with distance {dist:.3f}m")
+                return q
+                
+            if dist > best_dist:
+                best_dist = dist
+                best_q = q
+                
+        if best_q is not None:
+            print(f"Using best available sample with distance {best_dist:.3f}m")
+            
+        return best_q if best_q is not None else np.random.uniform(self.joint_limits[:, 0], self.joint_limits[:, 1])
+
+    def generate_biased_sample(self, end_q, start_q):
+        """Generate sample biased towards goal and away from obstacles"""
+        bias = np.random.rand() * (end_q - start_q)
         noise_std = 0.1 * np.ones(start_q.size)
         active_joints = [0, 1, 2, 4]
         for j in active_joints:
             noise_std[j] = 0.3
 
-        noise = np.random.randn(start_q.size) * noise_std
-
-        candidate = start_q + bias + noise + np.random.randn(start_q.size)
+        # Add position-based bias
+        pos = self.robot.forward_kinematics(start_q)
+        pos_bias = self.get_position_bias(pos)
+        noise = np.random.randn(start_q.size) * noise_std * (1 + pos_bias)
+        
+        candidate = start_q + bias + noise
         return np.clip(candidate, self.joint_limits[:, 0], self.joint_limits[:, 1])
+
+    def sample_q(self, end_q, start_q, iteration):
+        """Enhanced adaptive sampling strategy"""
+        # Non-linear exploration weight growth
+        explore_weight = min(0.9, (iteration / self.max_iter) ** 0.5 * 0.7)
+        goal_weight = max(0.1, 0.3 - iteration / self.max_iter * 0.2)
+        
+        r = np.random.rand()
+        if r < goal_weight:
+            return end_q
+        elif r < goal_weight + explore_weight:
+            return self.generate_safe_sample()
+        else:
+            return self.generate_biased_sample(end_q, start_q)
 
     def ee_dist(self, q1, q2):
         p1 = np.array(self.robot.forward_kinematics(q1))
@@ -105,73 +166,76 @@ class RRTPlanner:
                     return True
         return False
 
-    def steer(self, q_near, q_rand):
+    def steer(self, q_near, q_rand, iteration):
+        """Enhanced adaptive steering with multi-direction exploration"""
         direction = q_rand - q_near
         length = np.linalg.norm(direction)
         if length == 0:
             return None
-        if length <= self.step_size:
+            
+        # Get current position and distance to obstacle
+        pos = self.robot.forward_kinematics(q_near)
+        dist_to_obstacle = self.get_obstacle_distance(pos)
+        end_pos = self.robot.forward_kinematics(q_rand)
+        end_dist = self.get_obstacle_distance(end_pos)
+        
+        print(f"Steering: current dist = {dist_to_obstacle:.3f}m, target dist = {end_dist:.3f}m")
+        
+        # Calculate adaptive factors with smaller thresholds
+        iteration_factor = min(1.5, (1.0 + iteration/self.max_iter)**0.5)  # Reduced maximum
+        distance_factor = min(1.5, max(0.5, (dist_to_obstacle + end_dist) / 0.1))  # Changed from 0.2 to 0.1
+        goal_bias = max(0.5, 1.0 - iteration/self.max_iter)
+        
+        # Combine factors for final step size
+        adaptive_step = self.step_size * iteration_factor * distance_factor * goal_bias
+        print(f"Step size: base={self.step_size}, adaptive={adaptive_step}")
+        
+        if length <= adaptive_step:
             if self.collision_check_line(q_near, q_rand):
                 return None
             return q_rand
         
-        step_vector = direction / length * self.step_size
-        q_new = q_near + step_vector
-        if not self.is_within_limits(q_new) or self.collion_checker.self_collision(q_new):
-            return None
+        # Try multiple directions if near obstacle
+        if dist_to_obstacle < 0.01:  # Reduced from 0.1 to 0.05
+            print("Near obstacle, trying multiple directions")
+            best_q = None
+            best_dist = -float('inf')
+            
+            # Try original direction plus random perturbations
+            for attempt in range(5):  # Increased attempts
+                if attempt == 0:
+                    step_vector = direction / length * adaptive_step
+                else:
+                    # Add random perturbation to direction
+                    perturbed_direction = direction + np.random.randn(direction.size) * 0.1
+                    step_vector = perturbed_direction / np.linalg.norm(perturbed_direction) * adaptive_step
+                
+                q_try = q_near + step_vector
+                
+                if not self.is_within_limits(q_try) or self.collion_checker.self_collision(q_try):
+                    continue
+                    
+                pos_try = self.robot.forward_kinematics(q_try)
+                dist_try = self.get_obstacle_distance(pos_try)
+                
+                if dist_try > best_dist and not self.obstacle_collision_check(q_try):
+                    best_dist = dist_try
+                    best_q = q_try
+                    print(f"Found better direction, distance: {best_dist:.3f}m")
+            
+            return best_q
+        else:
+            # Standard steering for safer regions
+            step_vector = direction / length * adaptive_step
+            q_new = q_near + step_vector
+            
+            if not self.is_within_limits(q_new) or self.collion_checker.self_collision(q_new):
+                return None
+                
+            if self.obstacle_collision_check(q_new):
+                return None
+                
         return q_new
-
-    def calculate_3d_tangents(self, point, box):
-        # Ensure point is numpy array
-        point = np.array(point)
-        """Calculate tangent points from a point to a 3D box"""
-        # Convert to native Python floats to avoid numpy scalar issues
-        x_min = float(box[0])
-        y_min = float(box[1])
-        z_min = float(box[2])
-        x_max = float(box[3])
-        y_max = float(box[4])
-        z_max = float(box[5])
-        corners = np.array([
-            [x_min, y_min, z_min], [x_max, y_min, z_min],
-            [x_min, y_max, z_min], [x_max, y_max, z_min],
-            [x_min, y_min, z_max], [x_max, y_min, z_max],
-            [x_min, y_max, z_max], [x_max, y_max, z_max]
-        ])
-        
-        tangent_points = []
-        
-        # For each edge of the box
-        edges = [
-            # Vertical edges (marked with 'v')
-            ([0, 4], ('v', x_min, y_min)), ([1, 5], ('v', x_max, y_min)),
-            ([2, 6], ('v', x_min, y_max)), ([3, 7], ('v', x_max, y_max)),
-            # Horizontal edges at z_min (marked with 'h')
-            ([0, 1], ('h', z_min)), ([0, 2], ('h', z_min)),
-            ([1, 3], ('h', z_min)), ([2, 3], ('h', z_min)),
-            # Horizontal edges at z_max
-            ([4, 5], ('h', z_max)), ([4, 6], ('h', z_max)),
-            ([5, 7], ('h', z_max)), ([6, 7], ('h', z_max))
-        ]
-        
-        for edge in edges:
-            edge_type = edge[1][0]  # Get the type ('v' or 'h')
-            if edge_type == 'v':    # Vertical edge
-                # Project point onto the vertical line
-                x, y = edge[1][1], edge[1][2]  # Get coordinates from tuple
-                z = np.clip(point[2], z_min, z_max)
-                tangent_points.append(np.array([x, y, z]))
-            else:  # Horizontal edge
-                z = edge[1][1]  # Get z coordinate from tuple
-                # Get the two corner points
-                c1, c2 = corners[edge[0][0]], corners[edge[0][1]]
-                # Project point onto the line segment
-                v = c2 - c1
-                t = np.clip(np.dot(point - c1, v) / np.dot(v, v), 0, 1)
-                proj = c1 + t * v
-                tangent_points.append(proj)
-        
-        return tangent_points
 
     def check_cartesian_line(self, start_pos, end_pos, num_points=20):
         """Check if a line in Cartesian space collides with the obstacle"""
@@ -199,59 +263,6 @@ class RRTPlanner:
                 
         return False  # No collision
 
-    def rrt_plan(self, start_q, end_q):
-        """Basic RRT path planning implementation"""
-        tree = [{'q': start_q, 'parent': None}]
-        print("\nStarting RRT planning...")
-        print(f"Start config: {start_q}")
-        print(f"Goal config: {end_q}")
-        print(f"Step size: {self.step_size}")
-
-        for i in range(self.max_iter):
-            if i % 100 == 0:  # Print progress every 100 iterations
-                print(f"RRT iteration {i}/{self.max_iter}, tree size: {len(tree)}")
-            q_rand = self.sample_q(end_q, start_q)
-            idx_near = self.nearest_index(tree, q_rand)
-            q_near = tree[idx_near]['q']
-            
-            q_new = self.steer(q_near, q_rand)
-            if q_new is None:
-                continue
-
-            tree.append({'q': q_new, 'parent': idx_near})
-
-            if self.ee_dist(q_new, end_q) < self.step_size * 10:
-                if self.collision_check_line(q_new, end_q):
-                    print("Found path but collision check failed")
-                    continue
-                print("Found valid path to goal!")
-                tree.append({'q': end_q, 'parent': len(tree) - 1})
-                path = []
-                idx = len(tree) - 1
-                while idx is not None:
-                    path.append(tree[idx]['q'])
-                    idx = tree[idx]['parent']
-                path.reverse()
-                print(f"Path length: {len(path)}")
-                return path
-            
-        for i in reversed(range(len(tree))):
-            q_node = tree[i]['q']
-            if not self.collision_check_line(q_node, end_q):
-                print("Found direct connection to goal!")
-                tree.append({'q': end_q, 'parent': i})
-                path = []
-                idx = len(tree) - 1
-                while idx is not None:
-                    path.append(tree[idx]['q'])
-                    idx = tree[idx]['parent']
-                path.reverse()
-                print(f"Path length: {len(path)}")
-                return path
-            
-        print("RRT failed to find a path after maximum iterations")
-        return None
-
     def direct_joint_path(self, start_q, end_q, num_points=20):
         """Generate a straight-line path between two joint configurations"""
         alphas = np.linspace(0, 1, num_points)
@@ -263,76 +274,91 @@ class RRTPlanner:
             path.append(q)
         return path
 
-    def get_best_tangent_ik(self, current_cart, end_cart, tangent_points):
-        """Find best tangent point with valid IK solution"""
-        line_vector = end_cart - current_cart
-        min_dist = float('inf')
-        best_tangent = None
-        best_tangent_q = None
-        
-        for point in tangent_points:
-            point_vector = point - current_cart
-            dist = np.linalg.norm(np.cross(point_vector, line_vector)) / np.linalg.norm(line_vector)
-            
-            # Try to get IK solution
-            tangent_q = self.robot.inverse_kinematics(point)
-            if tangent_q is not None and dist < min_dist:
-                min_dist = dist
-                best_tangent = point
-                best_tangent_q = tangent_q
-                
-        return best_tangent, best_tangent_q
+    def rrt_plan(self, start_q, end_q):
+        """Adaptive RRT path planning implementation"""
+        # Store tree as instance variable
+        self.tree = [{'q': start_q, 'parent': None}]
+        print("\nStarting adaptive RRT planning...")
+        print(f"Start config: {start_q}")
+        print(f"Goal config: {end_q}")
+        print(f"Base step size: {self.step_size}")
 
-    def iterative_plan(self, current_q, end_q, current_cart=None, end_cart=None, depth=0, max_depth=5):
-        """Iteratively plan path through tangent points"""
-        if depth >= max_depth:
-            print(f"Max recursion depth {max_depth} reached")
-            return None
+        for i in range(self.max_iter):
+            if i % 100 == 0:  # Print progress every 100 iterations
+                print(f"RRT iteration {i}/{self.max_iter}, tree size: {len(self.tree)}")
+                # Print additional statistics
+                near_pos = self.robot.forward_kinematics(self.tree[-1]['q'])
+                dist = self.get_obstacle_distance(near_pos)
+                print(f"Current distance to obstacle: {dist:.3f}m")
+
+            # Adaptive sampling based on iteration count
+            q_rand = self.sample_q(end_q, start_q, i)
+            idx_near = self.nearest_index(self.tree, q_rand)
+            q_near = self.tree[idx_near]['q']
             
-        # Get cartesian positions if not provided
-        if current_cart is None:
-            current_cart = self.robot.forward_kinematics(current_q)
-        if end_cart is None:
-            end_cart = self.robot.forward_kinematics(end_q)
+            # Adaptive steering
+            q_new = self.steer(q_near, q_rand, i)
+            if q_new is None:
+                continue
+
+            self.tree.append({'q': q_new, 'parent': idx_near})
+
+            # Adaptive goal check threshold based on iteration
+            goal_threshold = self.step_size * (10 - min(5, i/self.max_iter * 5))  # Decrease threshold over time
+            if self.ee_dist(q_new, end_q) < goal_threshold:
+                if self.collision_check_line(q_new, end_q):
+                    print("Found path but collision check failed")
+                    continue
+                print("Found valid path to goal!")
+                self.tree.append({'q': end_q, 'parent': len(self.tree) - 1})
+                path = []
+                idx = len(self.tree) - 1
+                while idx is not None:
+                    path.append(self.tree[idx]['q'])
+                    idx = self.tree[idx]['parent']
+                path.reverse()
+                print(f"Path length: {len(path)}")
+                return path
             
-        # First try direct path if possible
-        if not self.check_cartesian_line(current_cart, end_cart):
-            print("Direct path possible!")
-            direct_path = self.direct_joint_path(current_q, end_q)
-            if direct_path is not None:
-                return direct_path
+        # Try direct connections with gradually increasing thresholds
+        for threshold_multiplier in [1.0, 1.5, 2.0]:  # Try increasingly relaxed thresholds
+            print(f"\nTrying direct connections with threshold {threshold_multiplier}x...")
+            for i in reversed(range(len(self.tree))):
+                q_node = self.tree[i]['q']
+                if self.ee_dist(q_node, end_q) < self.step_size * 10 * threshold_multiplier:
+                    if not self.collision_check_line(q_node, end_q):
+                        print("Found direct connection to goal!")
+                        self.tree.append({'q': end_q, 'parent': i})
+                        path = []
+                        idx = len(self.tree) - 1
+                        while idx is not None:
+                            path.append(self.tree[idx]['q'])
+                            idx = self.tree[idx]['parent']
+                        path.reverse()
+                        print(f"Path length: {len(path)}")
+                        return path
+        
+        print("RRT failed to find a path after maximum iterations")
+        return None
+
+    def find_safest_node(self, tree):
+        """Find the node in the tree that is furthest from obstacles"""
+        max_dist = -float('inf')
+        best_node = None
+        best_pos = None
+        
+        for node in tree:
+            pos = self.robot.forward_kinematics(node['q'])
+            dist = self.get_obstacle_distance(pos)
+            if dist > max_dist:
+                max_dist = dist
+                best_node = node
+                best_pos = pos
                 
-        # Calculate tangent points
-        print("\nFinding tangent points...")
-        tangent_points = self.calculate_3d_tangents(current_cart, self.boxes_3d)
-        best_tangent, best_tangent_q = self.get_best_tangent_ik(current_cart, end_cart, tangent_points)
-        
-        if best_tangent_q is None:
-            print("No valid tangent point found, trying direct RRT")
-            return self.rrt_plan(current_q, end_q)
-            
-        print(f"Best tangent point found at {best_tangent}")
-        print("Using direct path to tangent first")
-        path1 = self.direct_joint_path(current_q, best_tangent_q)
-        
-        # If direct path fails, try RRT
-        if path1 is None:
-            print("Direct path failed, trying RRT to tangent")
-            path1 = self.rrt_plan(current_q, best_tangent_q)
-            if path1 is None:
-                print("Failed to reach tangent point")
-                return None
-                
-        # Recursively plan from tangent to goal
-        print("Planning from tangent to goal...")
-        path2 = self.iterative_plan(best_tangent_q, end_q, best_tangent, end_cart, depth + 1)
-        if path2 is None:
-            return None
-            
-        return path1 + path2[1:]
-        
-    def plan(self, start_q, end_q):
-        """Plan a path considering direct path and obstacle avoidance"""
+        return best_node, best_pos, max_dist
+
+    def plan(self, start_q, end_q, max_attempts=5):
+        """Plan a path using iterative RRT from safe points"""
         # Convert inputs to numpy arrays
         start_q = np.array(start_q)
         end_q = np.array(end_q)
@@ -364,12 +390,40 @@ class RRTPlanner:
         start_q = np.array(start_q)
         end_q = np.array(end_q)
         
-        print("\nStarting iterative planning...")
-        path = self.iterative_plan(start_q, end_q, start_cart, end_cart)
+        # Initialize for iterative planning
+        current_q = start_q
+        current_cart = start_cart
+        attempts = 0
+        tree = None
         
-        if path is not None:
-            print("Successfully found path!")
-            return path
+        while attempts < max_attempts:
+            print(f"\nPlanning attempt {attempts + 1}/{max_attempts}")
             
-        print("Failed to find any valid path")
+            # Check if direct path is possible
+            if not self.check_cartesian_line(current_cart, end_cart):
+                print("Direct path possible!")
+                direct_path = self.direct_joint_path(current_q, end_q)
+                if direct_path is not None:
+                    return direct_path
+            
+            # Try RRT from current position
+            print("\nAttempting RRT planning...")
+            path = self.rrt_plan(current_q, end_q)
+            if path is not None:
+                return path
+            
+            # If RRT failed, find safest point in the tree to restart from
+            if hasattr(self, 'tree'):  # Use the instance's tree from last RRT attempt
+                best_node, best_pos, max_dist = self.find_safest_node(self.tree)
+                if best_node is not None and max_dist > 0.1:  # Only use points with reasonable clearance
+                    print(f"\nMoving to safer position (distance: {max_dist:.3f}m)")
+                    current_q = best_node['q']
+                    current_cart = best_pos
+                else:
+                    print("No safe nodes found")
+                    break
+            
+            attempts += 1
+            
+        print("Failed to find path after maximum attempts")
         return None
