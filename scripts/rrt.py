@@ -12,7 +12,7 @@ class RRTPlanner:
         self.max_iter = max_iter
         self.goal_sample_rate = goal_sample_rate
         self.n_steps = n_steps
-        self.min_height = 0.0  # Minimum allowed height for end-effector
+        self.min_height = 0.005  # Minimum allowed height for end-effector
         
         # Initialize workspace planner
         self.workspace_planner = WorkspaceRRT(obstacle, step_size=step_size, min_height=self.min_height)
@@ -137,8 +137,8 @@ class RRTPlanner:
 
         # Check height constraint
         if ee_position[2] < self.min_height:
-            print(f"\nEnd-effector below minimum height!")
-            print(f"EE Position: x={ee_position[0]:.3f}, y={ee_position[1]:.3f}, z={ee_position[2]:.3f}")
+            # print(f"\nEnd-effector below minimum height!")
+            # print(f"EE Position: x={ee_position[0]:.3f}, y={ee_position[1]:.3f}, z={ee_position[2]:.3f}")
             return True
 
         # Check obstacle collision
@@ -161,7 +161,7 @@ class RRTPlanner:
                 if (x_min <= point[0] <= x_max and
                     y_min <= point[1] <= y_max and
                     z_min <= point[2] <= z_max):
-                    print(f"Joint link collision detected at position: {point}")
+                    # print(f"Joint link collision detected at position: {point}")
                     return True
 
         
@@ -244,7 +244,7 @@ class RRTPlanner:
                     # Remove invalid node and add to failed nodes
                     failed_node = tree.pop()['q']
                     failed_nodes.append(failed_node)
-                    print("Found path but collision check failed - backtracking")
+                    # print("Found path but collision check failed - backtracking")
                     continue
 
                 # Construct potential path
@@ -261,7 +261,7 @@ class RRTPlanner:
                 path.reverse()
 
                 # Validate entire path with higher resolution
-                print("\nValidating path with high-resolution collision checking...")
+                # print("\nValidating path with high-resolution collision checking...")
                 valid_path = True
                 invalid_idx = None
 
@@ -275,7 +275,7 @@ class RRTPlanner:
                         pos = self.robot.forward_kinematics(interp_q)
                         
                         if self.obstacle_collision_check(interp_q, num_interpolation_points=20):
-                            print(f"Collision detected during high-resolution check at point {i}")
+                            # print(f"Collision detected during high-resolution check at point {i}")
                             valid_path = False
                             invalid_idx = i
                             break
@@ -289,7 +289,7 @@ class RRTPlanner:
                         if i not in valid_nodes:
                             failed_node = tree.pop(i)['q']
                             failed_nodes.append(failed_node)
-                    print("Path validation failed - invalid nodes removed")
+                    # print("Path validation failed - invalid nodes removed")
                     continue
 
                 print("\nFound valid path to goal!")

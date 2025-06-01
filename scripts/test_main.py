@@ -10,9 +10,9 @@ from kinematics import NLinkArm
 
 def main():
     # Define positions as numpy arrays
-    obj = np.array([0.166, 0.148, 0], dtype=float)      # Object position
-    obstacle = np.array([0.357, 0.168, 0], dtype=float)  # Obstacle position
-    goal = np.array([0.552, 0.131, 0], dtype=float)     # Goal position
+    obj = np.array([0.18343688, 0.13385455, -0.01195908], dtype=float)      # Object position
+    obstacle = np.array([0.58765264, 0.10652312, 0.00915751], dtype=float)  # Obstacle position
+    goal = np.array([0.38018093, 0.13177095, 0.08623872], dtype=float)     # Goal position
 
     # Robot parameters
     joint_limits = np.array([(205, 150), (205, 150), (210, 150), 

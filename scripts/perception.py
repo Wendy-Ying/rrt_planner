@@ -81,6 +81,8 @@ def process_frame(color_image, depth_frame):
     #             results.append((cx, cy, 'goal'))
     #         elif marker_id == 2:
     #             results.append((cx, cy, 'obj'))
+    #         elif marker_id == 3:
+    #             results.append((cx, cy, 'obstacle'))
 
     # return results  # List of (x, y, label)
 

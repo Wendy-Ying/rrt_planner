@@ -51,7 +51,7 @@ class NLinkArm:
             q = np.array(q_init)
             print(f"Initial joint angles: {q}")
 
-        weights = np.array([2.0, 2.0, 0.5, 1.0, 0.1, 0.1])
+        weights = np.array([2.0, 0.5, 0.5, 1.0, 0.1, 0.1])
         print(f"Using weights: {weights}")
 
         for iter_count in range(max_iter):

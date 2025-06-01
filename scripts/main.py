@@ -45,7 +45,7 @@ def main():
     final = np.array([0, 343, 75, 0, 300, 0]) / 180 * np.pi
 
     # Calculate grasp and offset positions
-    obj_grasp = obj + np.array([0, 0.02, 0])
+    obj_grasp = obj + np.array([0, 0.02, -0.03])
     obj_offset = obj + np.array([0, 0, 0.05])
 
     print(f"Detected object: {obj}")
@@ -53,14 +53,14 @@ def main():
     print(f"Obstacle position: {obstacle}")
 
     # Create obstacle bounding box with margin
-    margin = 0.02
+    margin = 0.06
     boxes_3d = np.array([
         float(obstacle[0] - margin),  # x_min
         float(obstacle[1] - margin),  # y_min
-        float(obstacle[2]),           # z_min
+        float(obstacle[2] - 0.15),           # z_min
         float(obstacle[0] + margin),  # x_max
         float(obstacle[1] + margin),  # y_max
-        float(obstacle[2] + 0.2)      # z_max
+        float(obstacle[2] + 0.05)      # z_max
     ])
 
     rrt = RRTPlanner(robot, joint_limits, collision_checker, boxes_3d)
@@ -69,28 +69,25 @@ def main():
 
     args = utilities.parseConnectionArguments()
 
-    # path = rrt.plan(init, obj_grasp)
-    
+    path = rrt.plan(init, obj_grasp)
 
-    # if path:
-    #     smooth_path = optimizer.optimize(path)
-    #     for i, q in enumerate(smooth_path):
-    #         print(f"Step {i}: {q}")
-    #     with utilities.DeviceConnection.createTcpConnection(args) as router:
-    #         base = BaseClient(router)
-    #         pid_angle_control.send_gripper_command(base, 0.1)
-    #         success = pid_angle_control.execute_path(base, smooth_path)
-    #         pid_angle_control.send_gripper_command(base, 1)
-    #         if not success:
-    #             print("Path execution failed")
-    #         else:
-    #             print("Path execution completed successfully")
-    
+    if path:
+        smooth_path = optimizer.optimize(path)
+        for i, q in enumerate(smooth_path):
+            print(f"Step {i}: {q}")
+        with utilities.DeviceConnection.createTcpConnection(args) as router:
+            base = BaseClient(router)
+            pid_angle_control.send_gripper_command(base, 0.1)
+            success = pid_angle_control.execute_path(base, smooth_path)
+            pid_angle_control.send_gripper_command(base, 1)
+            if not success:
+                print("Path execution failed")
+            else:
+                print("Path execution completed successfully")
     
     # plot_cartesian_trajectory(smooth_path, robot)
 
     path = rrt.plan(obj_offset, goal)
-    # path = prm.plan(obj_offset, goal)
     if path:
         smooth_path = optimizer.optimize(path)
         for i, q in enumerate(path):
@@ -106,18 +103,18 @@ def main():
 
     # plot_cartesian_trajectory(smooth_path, robot)
 
-    # path = rrt.plan(goal, final)
-    # if path:
-    #     smooth_path = optimizer.optimize(path)
-    #     for i, q in enumerate(smooth_path):
-    #         print(f"Step {i}: {q}")
-    #     with utilities.DeviceConnection.createTcpConnection(args) as router:
-    #         base = BaseClient(router)
-    #         success = pid_angle_control.execute_path(base, smooth_path)
-    #         if not success:
-    #             print("Path execution failed")
-    #         else:
-    #             print("Path execution completed successfully")
+    path = rrt.plan(goal, init)
+    if path:
+        smooth_path = optimizer.optimize(path)
+        for i, q in enumerate(smooth_path):
+            print(f"Step {i}: {q}")
+        with utilities.DeviceConnection.createTcpConnection(args) as router:
+            base = BaseClient(router)
+            success = pid_angle_control.execute_path(base, smooth_path)
+            if not success:
+                print("Path execution failed")
+            else:
+                print("Path execution completed successfully")
 
     pipeline.stop()
 
