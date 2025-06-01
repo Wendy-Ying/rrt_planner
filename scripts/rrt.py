@@ -252,6 +252,85 @@ class RRTPlanner:
         print("RRT failed to find a path after maximum iterations")
         return None
 
+    def direct_joint_path(self, start_q, end_q, num_points=20):
+        """Generate a straight-line path between two joint configurations"""
+        alphas = np.linspace(0, 1, num_points)
+        path = []
+        for alpha in alphas:
+            q = start_q + alpha * (end_q - start_q)
+            if not self.is_within_limits(q) or self.collision_check_line(start_q, q):
+                return None
+            path.append(q)
+        return path
+
+    def get_best_tangent_ik(self, current_cart, end_cart, tangent_points):
+        """Find best tangent point with valid IK solution"""
+        line_vector = end_cart - current_cart
+        min_dist = float('inf')
+        best_tangent = None
+        best_tangent_q = None
+        
+        for point in tangent_points:
+            point_vector = point - current_cart
+            dist = np.linalg.norm(np.cross(point_vector, line_vector)) / np.linalg.norm(line_vector)
+            
+            # Try to get IK solution
+            tangent_q = self.robot.inverse_kinematics(point)
+            if tangent_q is not None and dist < min_dist:
+                min_dist = dist
+                best_tangent = point
+                best_tangent_q = tangent_q
+                
+        return best_tangent, best_tangent_q
+
+    def iterative_plan(self, current_q, end_q, current_cart=None, end_cart=None, depth=0, max_depth=5):
+        """Iteratively plan path through tangent points"""
+        if depth >= max_depth:
+            print(f"Max recursion depth {max_depth} reached")
+            return None
+            
+        # Get cartesian positions if not provided
+        if current_cart is None:
+            current_cart = self.robot.forward_kinematics(current_q)
+        if end_cart is None:
+            end_cart = self.robot.forward_kinematics(end_q)
+            
+        # First try direct path if possible
+        if not self.check_cartesian_line(current_cart, end_cart):
+            print("Direct path possible!")
+            direct_path = self.direct_joint_path(current_q, end_q)
+            if direct_path is not None:
+                return direct_path
+                
+        # Calculate tangent points
+        print("\nFinding tangent points...")
+        tangent_points = self.calculate_3d_tangents(current_cart, self.boxes_3d)
+        best_tangent, best_tangent_q = self.get_best_tangent_ik(current_cart, end_cart, tangent_points)
+        
+        if best_tangent_q is None:
+            print("No valid tangent point found, trying direct RRT")
+            return self.rrt_plan(current_q, end_q)
+            
+        print(f"Best tangent point found at {best_tangent}")
+        print("Using direct path to tangent first")
+        path1 = self.direct_joint_path(current_q, best_tangent_q)
+        
+        # If direct path fails, try RRT
+        if path1 is None:
+            print("Direct path failed, trying RRT to tangent")
+            path1 = self.rrt_plan(current_q, best_tangent_q)
+            if path1 is None:
+                print("Failed to reach tangent point")
+                return None
+                
+        # Recursively plan from tangent to goal
+        print("Planning from tangent to goal...")
+        path2 = self.iterative_plan(best_tangent_q, end_q, best_tangent, end_cart, depth + 1)
+        if path2 is None:
+            return None
+            
+        return path1 + path2[1:]
+        
     def plan(self, start_q, end_q):
         """Plan a path considering direct path and obstacle avoidance"""
         # Convert inputs to numpy arrays
@@ -282,62 +361,15 @@ class RRTPlanner:
         # Ensure all positions are numpy arrays
         start_cart = np.array(start_cart)
         end_cart = np.array(end_cart)
-        if start_q is not None:
-            start_q = np.array(start_q)
-        if end_q is not None:
-            end_q = np.array(end_q)
-        if self.check_cartesian_line(start_cart, end_cart):
-            print("Direct path blocked, trying intermediate points...")
-        else:
-            print("Direct path possible, attempting direct planning...")
-            direct_path = self.rrt_plan(start_q, end_q)
-            if direct_path is not None:
-                return direct_path
+        start_q = np.array(start_q)
+        end_q = np.array(end_q)
+        
+        print("\nStarting iterative planning...")
+        path = self.iterative_plan(start_q, end_q, start_cart, end_cart)
+        
+        if path is not None:
+            print("Successfully found path!")
+            return path
             
-        # Trying intermediate points through tangent points
-        print("\nCalculating tangent points...")
-        start_cart = np.array(start_cart)
-        end_cart = np.array(end_cart)
-        
-        tangent_points = self.calculate_3d_tangents(start_cart, self.boxes_3d)
-        print(f"Found {len(tangent_points)} tangent points")
-        
-        line_vector = end_cart - start_cart
-        min_dist = float('inf')
-        best_tangent = None
-        
-        print("\nFinding best tangent point...")
-        for i, point in enumerate(tangent_points):
-            point_vector = point - start_cart
-            dist = np.linalg.norm(np.cross(point_vector, line_vector)) / np.linalg.norm(line_vector)
-            print(f"Tangent point {i}: position = {point}, distance = {dist:.6f}")
-            if dist < min_dist:
-                min_dist = dist
-                best_tangent = point
-        
-        if best_tangent is not None:
-            print(f"\nBest tangent point found at {best_tangent}")
-            print("Calculating IK for tangent point...")
-            tangent_q = self.robot.inverse_kinematics(best_tangent)
-            print(f"IK solution for tangent: {tangent_q}")
-            
-            if tangent_q is not None:
-                print("\nPlanning through tangent point...")
-                print("Planning path 1: start -> tangent")
-                path1 = self.rrt_plan(start_q, tangent_q)
-                if path1 is not None:
-                    print("Path 1 found! Planning path 2: tangent -> goal")
-                    path2 = self.rrt_plan(tangent_q, end_q)
-                    if path2 is not None:
-                        print("Path 2 found! Combining paths...")
-                        full_path = path1 + path2[1:]
-                        print(f"Combined path length: {len(full_path)}")
-                        return full_path
-                    else:
-                        print("Failed to find path 2 (tangent -> goal)")
-                else:
-                    print("Failed to find path 1 (start -> tangent)")
-        
-        # If all else fails, try direct RRT planning again
-        print("Attempting direct RRT planning...")
-        return self.rrt_plan(start_q, end_q)
+        print("Failed to find any valid path")
+        return None
