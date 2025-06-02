@@ -53,7 +53,7 @@ def camera_to_world(camera_point):
 
 # --------------- Frame Processing ------------------
 
-def process_frame(color_image, depth_frame):
+def process_frame(color_image, depth_frame, mode='init'):
     """Detect ArUco markers and return obj/goal world coordinates."""
     detector = set_aruco()
     gray = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
@@ -90,11 +90,14 @@ def process_frame(color_image, depth_frame):
                 obj = world_coords
             elif marker_id == 3:
                 obstacle = world_coords
-
-    if obj is not None and goal is not None and obstacle is not None:
-        return obj, goal, obstacle
-    else:
-        return None, None, None
+    if mode == 'init':
+        if obj is not None and goal is not None and obstacle is not None:
+            return obj, goal, obstacle
+        else:
+            return None, None, None
+    elif mode == 'replan':
+        if obstacle is not None:
+            return obstacle
 
 def detect(pipeline, align):
     obj, goal = None, None
@@ -108,10 +111,33 @@ def detect(pipeline, align):
             continue
 
         color_image = np.asanyarray(color_frame.get_data())
-        obj, goal, obstacle = process_frame(color_image, depth_frame)
+        obj, goal, obstacle = process_frame(color_image, depth_frame, mode='init')
 
         if obj is not None and goal is not None and obstacle is not None:
             return obj, goal, obstacle
+
+def renew(pipeline, align, prev_obstacle, threshold=0.3):
+    while True:
+        frames = pipeline.wait_for_frames()
+        aligned = align.process(frames)
+        depth_frame = aligned.get_depth_frame()
+        color_frame = aligned.get_color_frame()
+
+        if not depth_frame or not color_frame:
+            continue
+
+        color_image = np.asanyarray(color_frame.get_data())
+        new_obstacle = process_frame(color_image, depth_frame, mode='replan')
+
+        if new_obstacle is not None:
+            if prev_obstacle is None:
+                return new_obstacle, True
+
+            diff = np.linalg.norm(np.array(new_obstacle) - np.array(prev_obstacle))
+            if diff > threshold:
+                return new_obstacle, True
+            else:
+                return prev_obstacle, False
 
 if __name__ == "__main__":
     pipeline, align = init_realsense()

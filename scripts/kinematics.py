@@ -44,15 +44,15 @@ class NLinkArm:
         return np.array(positions)  # Convert list to array
 
     def inverse_kinematics(self, target_pos, q_init=np.array([357, 21, 150, 272, 320, 273]) / 180 * np.pi, max_iter=100, tol=1e-3, alpha=0.5):
-        print(f"\nStarting IK for target position: {target_pos}")
+        # print(f"\nStarting IK for target position: {target_pos}")
         if q_init is None:
             q = np.zeros(len(self.dh_params))
         else:
             q = np.array(q_init)
-            print(f"Initial joint angles: {q}")
+            # print(f"Initial joint angles: {q}")
 
         weights = np.array([2.0, 2.0, 0.5, 1.0, 0.1, 0.1])
-        print(f"Using weights: {weights}")
+        # print(f"Using weights: {weights}")
 
         for iter_count in range(max_iter):
             current_pos = self.forward_kinematics(q)
@@ -60,12 +60,13 @@ class NLinkArm:
             error_norm = np.linalg.norm(error)
             
             if iter_count % 10 == 0:  # Print every 10 iterations
-                print(f"IK iteration {iter_count}: error = {error_norm:.6f}")
-                print(f"Current position: {current_pos}")
-                print(f"Current angles: {q}")
+                # print(f"IK iteration {iter_count}: error = {error_norm:.6f}")
+                # print(f"Current position: {current_pos}")
+                # print(f"Current angles: {q}")
+                pass
 
             if error_norm < tol:
-                print(f"IK converged after {iter_count} iterations")
+                # print(f"IK converged after {iter_count} iterations")
                 return q
 
             J = self.jacobian_numerical(q)

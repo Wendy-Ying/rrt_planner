@@ -59,7 +59,7 @@ class DeviceConnection:
             session_info.connection_inactivity_timeout = 2000 # (milliseconds)
 
             self.sessionManager = SessionManager(self.router)
-            print("Logging as", self.credentials[0], "on device", self.ipAddress)
+            # print("Logging as", self.credentials[0], "on device", self.ipAddress)
             self.sessionManager.CreateSession(session_info)
 
         return self.router
