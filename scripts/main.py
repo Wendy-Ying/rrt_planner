@@ -66,11 +66,21 @@ def renew_listener(pipeline, align, prev, threshold=0.05, stable_duration=1.0):
         time.sleep(0.05)
 
 def on_obstacle_changed(obstacle):
+    global scene
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] [Trigger] Responding immediately to obstacle change!")
+    # stop
+
+    # update obstacle
+    scene.remove_world_object()
+    rospy.sleep(0.05)
+    add_obstacle(scene, obstacle[0], obstacle[1]+0.02, 0.01, 0.12, 0.12, 0.2)
+    
+    # go
 
 def main():
     global obstacle
+    global scene
     pipeline, align = init_realsense()
     
     joint_limits = np.array([(205, 150), (205, 150), (210, 150), (210, 145), (215, 140), (210, 150)]) / 180 * np.pi
