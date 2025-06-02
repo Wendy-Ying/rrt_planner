@@ -116,21 +116,18 @@ def move_to_angles(base, target_angles, gripper_value=0.0, is_endpoint=False):
     if not check_joint_limits(target_angles):
         return False
 
-    # Initialize PID controllers with different gains for endpoints vs waypoints
     if is_endpoint:
-        # Strict control parameters for endpoints
         pids = [
-            PIDController(Kp=2.0, Ki=0.05, Kd=0.1),  # Joint 1
-            PIDController(Kp=1.0, Ki=0.05, Kd=0.1),  # Joint 2
-            PIDController(Kp=1.0, Ki=0.05, Kd=0.1),  # Joint 3
-            PIDController(Kp=2.0, Ki=0.1, Kd=0.05),  # Joint 4
-            PIDController(Kp=1.0, Ki=0.05, Kd=0.1),  # Joint 5
-            PIDController(Kp=4.0, Ki=0.05, Kd=0.1)   # Joint 6
+            PIDController(Kp=1.5, Ki=0.01, Kd=0.2),  # Joint 1
+            PIDController(Kp=0.8, Ki=0.01, Kd=0.15), # Joint 2
+            PIDController(Kp=0.8, Ki=0.01, Kd=0.15), # Joint 3
+            PIDController(Kp=1.5, Ki=0.02, Kd=0.15), # Joint 4
+            PIDController(Kp=0.8, Ki=0.01, Kd=0.15), # Joint 5
+            PIDController(Kp=3.0, Ki=0.01, Kd=0.2)   # Joint 6
         ]
-        error_threshold = 0.1
-        min_speed_threshold = 0.0  # No minimum speed for endpoints
+        error_threshold = 0.2
+        min_speed_threshold = 0.5 
     else:
-        # Fluid control parameters for waypoints
         pids = [
             PIDController(Kp=1.0, Ki=0.0, Kd=0.1),  # Joint 1
             PIDController(Kp=0.5, Ki=0.0, Kd=0.1),  # Joint 2
@@ -140,7 +137,7 @@ def move_to_angles(base, target_angles, gripper_value=0.0, is_endpoint=False):
             PIDController(Kp=2.0, Ki=0.0, Kd=0.1)   # Joint 6
         ]
         error_threshold = 4.0  
-        min_speed_threshold = 3.0  # Minimum speed to maintain fluid motion
+        min_speed_threshold = 3.0  
     
     
     # Normalize target angles
