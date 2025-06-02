@@ -19,6 +19,9 @@ obstacle = None
 lock = threading.Lock()
 obstacle_updated_event = threading.Event()
 stop_flag = threading.Event()
+current_execution_event = threading.Event()
+execution_state = "IDLE"  # ["IDLE", "TO_OBJECT", "TO_GOAL", "TO_HOME"]
+current_target = None
 
 def renew_listener(pipeline, align, prev, threshold=0.05, stable_duration=1.0):
     global obstacle
@@ -66,21 +69,65 @@ def renew_listener(pipeline, align, prev, threshold=0.05, stable_duration=1.0):
         time.sleep(0.05)
 
 def on_obstacle_changed(obstacle):
-    global scene
+    global scene, current_execution_event
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] [Trigger] Responding immediately to obstacle change!")
-    # stop
-
-    # update obstacle
+    
+    # Stop current execution
+    current_execution_event.set()
+    
+    # Update obstacle
     scene.remove_world_object()
     rospy.sleep(0.05)
     add_obstacle(scene, obstacle[0], obstacle[1]+0.02, 0.01, 0.12, 0.12, 0.2)
+
+def wait_for_obstacle_stability(duration=3.0):
+    global obstacle_updated_event
+    start_time = time.time()
+    obstacle_updated_event.clear()
     
-    # go
+    while time.time() - start_time < duration:
+        if obstacle_updated_event.is_set():
+            return False
+        time.sleep(0.1)
+    return True
+
+def execute_task_segment(group, base, target_pos, optimizer):
+    global current_execution_event, execution_state
+    
+    while True:
+        # Wait for obstacle stability
+        print("Waiting for obstacle position to stabilize...")
+        if not wait_for_obstacle_stability(3.0):
+            print("Obstacle position changed during stability wait")
+            continue
+        
+        # Plan new path
+        print(f"Planning path to {target_pos}")
+        path = set_goal(group, target_pos[0], target_pos[1], target_pos[2])
+        if path is None:
+            print("Failed to plan path")
+            return False
+            
+        # Optimize path
+        smooth_path = optimizer.optimize(path)
+        
+        # Execute path with interruption checking
+        current_execution_event.clear()
+        success = pid_angle_control.execute_path(base, smooth_path, current_execution_event)
+        
+        if success and not current_execution_event.is_set():
+            print("Successfully reached target")
+            return True
+            
+        if current_execution_event.is_set():
+            print("Execution interrupted, replanning...")
+        else:
+            print("Execution failed")
+            return False
 
 def main():
-    global obstacle
-    global scene
+    global obstacle, scene, execution_state
     pipeline, align = init_realsense()
     
     joint_limits = np.array([(205, 150), (205, 150), (210, 150), (210, 145), (215, 140), (210, 150)]) / 180 * np.pi
@@ -116,49 +163,41 @@ def main():
     args = utilities.parseConnectionArguments()
 
     try:
-        smooth_path1, smooth_path2, smooth_path3 = None, None, None
         with utilities.DeviceConnection.createTcpConnection(args) as router:
             base = BaseClient(router)
             pid_angle_control.send_gripper_command(base, 0.2)
 
-        path = set_goal(group, obj[0], obj[1]+0.02, 0.03)
-        if path is not None:
-            smooth_path1 = optimizer.optimize(path)
-            with utilities.DeviceConnection.createTcpConnection(args) as router:
-                base = BaseClient(router)
-                success = pid_angle_control.execute_path(base, smooth_path1)
+            # Move to object
+            execution_state = "TO_OBJECT"
+            success = execute_task_segment(group, base, [obj[0], obj[1]+0.02, 0.03], optimizer)
+            if success:
                 pid_angle_control.send_gripper_command(base, 0.8)
-                if not success:
-                    print("Path execution failed")
-                else:
-                    print("Path execution completed successfully")
+                print("Successfully picked up object")
 
-        path = set_goal(group, goal[0], goal[1], 0.02)
-        if path is not None:
-            smooth_path2 = optimizer.optimize(path)
-            with utilities.DeviceConnection.createTcpConnection(args) as router:
-                base = BaseClient(router)
-                success = pid_angle_control.execute_path(base, smooth_path2)
-                pid_angle_control.send_gripper_command(base, 0.3)
-                if not success:
-                    print("Path execution failed")
-                else:
-                    print("Path execution completed successfully")
+                # Move to goal
+                execution_state = "TO_GOAL"
+                success = execute_task_segment(group, base, [goal[0], goal[1], 0.02], optimizer)
+                if success:
+                    pid_angle_control.send_gripper_command(base, 0.3)
+                    print("Successfully placed object at goal")
 
-        path = go_home(group, mode="C")
-        if path is not None:
-            smooth_path3 = optimizer.optimize(path)
-            with utilities.DeviceConnection.createTcpConnection(args) as router:
-                base = BaseClient(router)
-                success = pid_angle_control.execute_path(base, smooth_path3)
-                if not success:
-                    print("Path execution failed")
+                    # Return home
+                    execution_state = "TO_HOME"
+                    path = go_home(group, mode="C")
+                    if path is not None:
+                        smooth_path = optimizer.optimize(path)
+                        current_execution_event.clear()
+                        success = pid_angle_control.execute_path(base, smooth_path, current_execution_event)
+                        if success:
+                            print("Successfully returned home")
+                        else:
+                            print("Failed to return home")
+                    else:
+                        print("Failed to plan path home")
                 else:
-                    print("Path execution completed successfully")
-
-        if smooth_path1 is not None and smooth_path2 is not None and smooth_path3 is not None:
-            combined_path = np.vstack((smooth_path1, smooth_path2, smooth_path3))
-            plot_cartesian_trajectory(combined_path, robot)
+                    print("Failed to reach goal position")
+            else:
+                print("Failed to reach object")
     
     except KeyboardInterrupt:
         print("Script interrupted by user")

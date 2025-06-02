@@ -210,7 +210,7 @@ def move_to_angles(base, target_angles, gripper_value=0.0, is_endpoint=False):
             joint_speed.duration = 0
         base.SendJointSpeedsCommand(joint_speeds)
 
-def execute_path(base, path, gripper_value=0.0, is_first_motion=True):
+def execute_path(base, path, execution_event=None, gripper_value=0.0, is_first_motion=True):
     """
     Execute a sequence of joint configurations
     base: robot control interface
@@ -228,6 +228,10 @@ def execute_path(base, path, gripper_value=0.0, is_first_motion=True):
         is_endpoint = (i == path_len - 1)
         
         # Execute motion with appropriate parameters
+        if execution_event is not None and execution_event.is_set():
+            print("Path execution interrupted")
+            return False
+            
         success &= move_to_angles(base, angles_deg, gripper_value, is_endpoint)
         if not success:
             motion_type = "initial pickup" if is_first_motion else "final placement"
