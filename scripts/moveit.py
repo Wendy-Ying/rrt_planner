@@ -5,7 +5,8 @@ import numpy as np
 import moveit_commander
 from moveit_commander import MoveGroupCommander, PlanningSceneInterface
 from geometry_msgs.msg import PoseStamped
-from moveit_msgs.msg import Constraints, JointConstraint
+from moveit_msgs.msg import Constraints, JointConstraint, PositionConstraint
+from shape_msgs.msg import SolidPrimitive
 
 def init():
     moveit_commander.roscpp_initialize(sys.argv)
@@ -18,13 +19,16 @@ def init():
 
     group.set_planning_time(10)
     group.allow_replanning(True)
-    group.set_num_planning_attempts(1000)
-    group.set_planner_id("RRTConnectkConfigDefault")
+    group.set_num_planning_attempts(2000)
+    group.set_planner_id("RRTstarkConfigDefault")
     group.set_max_velocity_scaling_factor(0.7)
     group.set_max_acceleration_scaling_factor(0.7)
 
-    limit_joint(group, "joint_1", target_position=0, tolerance_above=2, tolerance_below=0.2)
-    limit_joint(group, "joint_3", target_position=1.75, tolerance_above=1.2, tolerance_below=1.75)
+    limit_joint(group, "joint_1", target_position=0, tolerance_above=1, tolerance_below=0.2)
+    limit_joint(group, "joint_2", target_position=0, tolerance_above=0.3, tolerance_below=1.5)
+    limit_joint(group, "joint_3", target_position=1.75, tolerance_above=1.2, tolerance_below=1.6)
+
+    set_cartesian_bounds(group)
 
     return group, scene, robot
 
@@ -110,6 +114,31 @@ def limit_joint(group, joint_name, target_position, tolerance_above=0.1, toleran
     
     group.set_path_constraints(constraints)
 
+def set_cartesian_bounds(group):
+    constraints = Constraints()
+    
+    position_constraint = PositionConstraint()
+    position_constraint.header.frame_id = "base_link"
+    position_constraint.link_name = group.get_end_effector_link()
+    
+    box = SolidPrimitive()
+    box.type = SolidPrimitive.BOX
+    box.dimensions = [1.0, 0.8, 1.0]
+    
+    box_pose = PoseStamped()
+    box_pose.header.frame_id = "base_link"
+    box_pose.pose.position.x = 0.25
+    box_pose.pose.position.y = 0.0
+    box_pose.pose.position.z = 0.3
+    box_pose.pose.orientation.w = 1.0
+    
+    position_constraint.constraint_region.primitives.append(box)
+    position_constraint.constraint_region.primitive_poses.append(box_pose.pose)
+    position_constraint.weight = 1.0
+    
+    constraints.position_constraints.append(position_constraint)
+    
+    group.set_path_constraints(constraints)
 
 def main():
     group, scene, robot = init()

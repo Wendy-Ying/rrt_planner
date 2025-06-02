@@ -52,7 +52,7 @@ def calculate_angle_error(target, current, joint_index=0):
     return direct_error
 
 class PIDController:
-    def __init__(self, Kp, Ki=0.0, Kd=0.0, max_i=10.0, max_output=20.0):
+    def __init__(self, Kp, Ki=0.0, Kd=0.0, max_i=10.0, max_output=40.0):
         self.Kp = Kp
         self.Ki = Ki
         self.Kd = Kd
@@ -127,7 +127,7 @@ def move_to_angles(base, target_angles, gripper_value=0.0, is_endpoint=False):
             PIDController(Kp=1.0, Ki=0.05, Kd=0.1),  # Joint 5
             PIDController(Kp=4.0, Ki=0.05, Kd=0.1)   # Joint 6
         ]
-        error_threshold = 0.2
+        error_threshold = 0.1
         min_speed_threshold = 0.0  # No minimum speed for endpoints
     else:
         # Fluid control parameters for waypoints
@@ -139,7 +139,7 @@ def move_to_angles(base, target_angles, gripper_value=0.0, is_endpoint=False):
             PIDController(Kp=0.5, Ki=0.0, Kd=0.1),  # Joint 5
             PIDController(Kp=2.0, Ki=0.0, Kd=0.1)   # Joint 6
         ]
-        error_threshold = 2.0  
+        error_threshold = 4.0  
         min_speed_threshold = 3.0  # Minimum speed to maintain fluid motion
     
     
@@ -162,7 +162,7 @@ def move_to_angles(base, target_angles, gripper_value=0.0, is_endpoint=False):
             errors = []
             for i in range(6):
                 # Calculate base speed from PID
-                base_speed = pids[i].control(target_angles[i], current_angles[i], i) * 1.5
+                base_speed = pids[i].control(target_angles[i], current_angles[i], i) * 2
                 # Apply minimum speed threshold while maintaining direction
                 speed = base_speed
                 if abs(base_speed) > 0:

@@ -39,62 +39,54 @@ def main():
 
     scene.remove_world_object()
     rospy.sleep(1.0)
-    add_obstacle(scene, obstacle[0], obstacle[1], 0.07, 0.12, 0.12, 0.14)
+    add_obstacle(scene, obstacle[0], obstacle[1]+0.02, 0.01, 0.12, 0.12, 0.2)
 
-    optimizer = BSplineOptimizer(robot, degree=3, num_points=5)
+    optimizer = BSplineOptimizer(robot, degree=3, num_points=20)
 
     args = utilities.parseConnectionArguments()
 
     try:
         with utilities.DeviceConnection.createTcpConnection(args) as router:
             base = BaseClient(router)
-            pid_angle_control.send_gripper_command(base, 0)
+            pid_angle_control.send_gripper_command(base, 0.2)
 
-        path = set_goal(group, obj[0], obj[1]+0.01, 0.01)
+        path = set_goal(group, obj[0], obj[1]+0.02, 0.03)
         if path is not None:
+            smooth_path1 = optimizer.optimize(path)
             with utilities.DeviceConnection.createTcpConnection(args) as router:
                 base = BaseClient(router)
-                success = pid_angle_control.execute_path(base, path)
+                success = pid_angle_control.execute_path(base, smooth_path1)
                 pid_angle_control.send_gripper_command(base, 0.8)
                 if not success:
                     print("Path execution failed")
                 else:
                     print("Path execution completed successfully")
-            plot_cartesian_trajectory(path, robot)
 
-        path = set_goal(group, obj[0], obj[1]+0.01, 0.1)
+        path = set_goal(group, goal[0], goal[1], 0.02)
         if path is not None:
+            smooth_path2 = optimizer.optimize(path)
             with utilities.DeviceConnection.createTcpConnection(args) as router:
                 base = BaseClient(router)
-                success = pid_angle_control.execute_path(base, path)
+                success = pid_angle_control.execute_path(base, smooth_path2)
+                pid_angle_control.send_gripper_command(base, 0.3)
                 if not success:
                     print("Path execution failed")
                 else:
                     print("Path execution completed successfully")
-            plot_cartesian_trajectory(path, robot)
-
-        path = set_goal(group, goal[0], goal[1], 0.015)
-        if path is not None:
-            with utilities.DeviceConnection.createTcpConnection(args) as router:
-                base = BaseClient(router)
-                success = pid_angle_control.execute_path(base, path)
-                pid_angle_control.send_gripper_command(base, 0.1)
-                if not success:
-                    print("Path execution failed")
-                else:
-                    print("Path execution completed successfully")
-            plot_cartesian_trajectory(path, robot)
 
         path = go_home(group, mode="C")
         if path is not None:
+            smooth_path3 = optimizer.optimize(path)
             with utilities.DeviceConnection.createTcpConnection(args) as router:
                 base = BaseClient(router)
-                success = pid_angle_control.execute_path(base, path)
+                success = pid_angle_control.execute_path(base, smooth_path3)
                 if not success:
                     print("Path execution failed")
                 else:
                     print("Path execution completed successfully")
-            plot_cartesian_trajectory(path, robot)
+
+        combined_path = np.vstack((smooth_path1, smooth_path2, smooth_path3))
+        plot_cartesian_trajectory(combined_path, robot)
     
     except KeyboardInterrupt:
         print("Script interrupted by user")
