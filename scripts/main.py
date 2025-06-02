@@ -160,7 +160,7 @@ def main():
     rospy.sleep(1.0)
     add_obstacle(scene, obstacle[0], obstacle[1]+0.02, 0.01, 0.12, 0.12, 0.2)
 
-    optimizer = BSplineOptimizer(robot, degree=3, num_points=20)
+    optimizer = BSplineOptimizer(robot, degree=3, num_points=10)
 
     t = threading.Thread(target=renew_listener, args=(pipeline, align, obstacle))
     t.start()

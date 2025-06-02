@@ -129,15 +129,15 @@ def move_to_angles(base, target_angles, gripper_value=0.0, is_endpoint=False):
         min_speed_threshold = 0.5 
     else:
         pids = [
-            PIDController(Kp=1.0, Ki=0.0, Kd=0.1),  # Joint 1
-            PIDController(Kp=0.5, Ki=0.0, Kd=0.1),  # Joint 2
-            PIDController(Kp=0.5, Ki=0.0, Kd=0.1),  # Joint 3
-            PIDController(Kp=1.0, Ki=0.0, Kd=0.1),  # Joint 4
-            PIDController(Kp=0.5, Ki=0.0, Kd=0.1),  # Joint 5
-            PIDController(Kp=2.0, Ki=0.0, Kd=0.1)   # Joint 6
+            PIDController(Kp=2, Ki=0.0, Kd=0.1),  # Joint 1
+            PIDController(Kp=2, Ki=0.0, Kd=0.05), # Joint 2
+            PIDController(Kp=2, Ki=0.0, Kd=0.05), # Joint 3
+            PIDController(Kp=2, Ki=0.0, Kd=0.1), # Joint 4
+            PIDController(Kp=2, Ki=0.0, Kd=0.1), # Joint 5
+            PIDController(Kp=2, Ki=0.0, Kd=0.1)   # Joint 6
         ]
-        error_threshold = 4.0  
-        min_speed_threshold = 3.0  
+        error_threshold = 2.0 
+        min_speed_threshold = 4.0  
     
     
     # Normalize target angles
