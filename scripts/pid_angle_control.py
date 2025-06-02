@@ -82,7 +82,7 @@ def send_gripper_command(base, value):
     finger.finger_identifier = 1
     finger.value = max(0.0, min(1.0, value))  # Ensure value is between 0 and 1
     base.SendGripperCommand(gripper_command)
-    time.sleep(5)  # Wait for gripper to move
+    time.sleep(3)  # Wait for gripper to move
 
 def check_joint_limits(angles):
     """Check if joint angles are within limits"""
@@ -188,7 +188,8 @@ def move_to_angles(base, target_angles, gripper_value=0.0, is_endpoint=False):
             # Check if all joints reached target using appropriate error threshold
             if all(error < error_threshold for error in errors):
                 point_type = "endpoint" if is_endpoint else "waypoint"
-                print(f"Target {point_type} reached")
+                if is_endpoint:
+                    print(f"Target {point_type} reached")
                 return True
                 
             # Timeout protection (10 seconds)

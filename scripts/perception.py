@@ -74,7 +74,6 @@ def process_frame(color_image, depth_frame):
 
             camera_coords = pixel_to_world(depth_frame, [cx, cy], depth)
             world_coords = camera_to_world(np.array(camera_coords))
-            world_coords = np.array([world_coords[0], world_coords[1], world_coords[2]+0.01])
             
     #         marker_id = ids[i][0]
     #         if marker_id == 0:
@@ -86,7 +85,7 @@ def process_frame(color_image, depth_frame):
 
             marker_id = ids[i][0]
             if marker_id == 0:
-                goal = np.array([world_coords[0], world_coords[1], world_coords[2]+0.07])
+                goal = world_coords
             elif marker_id == 2:
                 obj = world_coords
             elif marker_id == 3:

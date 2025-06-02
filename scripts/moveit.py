@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import rospy
+import numpy as np
 import moveit_commander
 from moveit_commander import MoveGroupCommander, PlanningSceneInterface
 from geometry_msgs.msg import PoseStamped
@@ -22,7 +23,8 @@ def init():
     group.set_max_velocity_scaling_factor(0.7)
     group.set_max_acceleration_scaling_factor(0.7)
 
-    limit_joint(group, "joint_0", target_position=0, tolerance_above=1.8, tolerance_below=-0.2)
+    limit_joint(group, "joint_1", target_position=0, tolerance_above=2, tolerance_below=0.2)
+    limit_joint(group, "joint_3", target_position=1.75, tolerance_above=1.2, tolerance_below=1.75)
 
     return group, scene, robot
 
@@ -44,11 +46,56 @@ def set_goal(group, x, y, z):
     pose_target.position.y = y
     pose_target.position.z = z
     group.set_pose_target(pose_target)
-    success = group.go(wait=True)
-    group.stop()
-    group.clear_pose_targets()
+    success, trajectory, _, _ = group.plan()
     if success:
-        print(f"Goal reached: x={x}, y={y}, z={z}")
+        print("Trajectory planned successfully")
+        joint_trajectory = []
+        for point in trajectory.joint_trajectory.points:
+            joint_trajectory.append(list(point.positions))
+        return np.array(joint_trajectory)
+    else:
+        print("Failed to plan")
+        return None
+
+def go_home(group, mode="A"):
+    goal_init = np.array([0, 21, 150, 272, 320, 273]) / 180 * np.pi
+    goal_final = np.array([0, 343, 75, 0, 300, 0]) / 180 * np.pi
+    if mode == "A":
+        group.set_joint_value_target(goal_init)
+        success, trajectory, _, _ = group.plan()
+        if success:
+            print("Trajectory planned successfully")
+            joint_trajectory = []
+            for point in trajectory.joint_trajectory.points:
+                joint_trajectory.append(list(point.positions))
+            return np.array(joint_trajectory)
+        else:
+            print("Failed to plan")
+            return None
+    if mode == "B":
+        group.set_joint_value_target(goal_final)
+        success, trajectory, _, _ = group.plan()
+        if success:
+            print("Trajectory planned successfully")
+            joint_trajectory = []
+            for point in trajectory.joint_trajectory.points:
+                joint_trajectory.append(list(point.positions))
+            return np.array(joint_trajectory)
+        else:
+            print("Failed to plan")
+            return None
+    if mode == "C":
+        group.set_named_target("home")
+        success, trajectory, _, _ = group.plan()
+        if success:
+            print("Trajectory planned successfully")
+            joint_trajectory = []
+            for point in trajectory.joint_trajectory.points:
+                joint_trajectory.append(list(point.positions))
+            return np.array(joint_trajectory)
+        else:
+            print("Failed to plan")
+            return None
 
 def limit_joint(group, joint_name, target_position, tolerance_above=0.1, tolerance_below=0.1, weight=1.0):
     constraint = JointConstraint()
@@ -74,8 +121,8 @@ def main():
     pose_target = group.get_current_pose().pose
     print(f"Current pose: x={pose_target.position.x}, y={pose_target.position.y}, z={pose_target.position.z}")
     
-    set_goal(group, 0.2, 0.25, 0.03)
-    set_goal(group, 0.5, -0.03, 0.03)
+    set_goal(group, 0.2, 0.25, 0.01)
+    set_goal(group, 0.5, -0.03, 0.01)
     
     group.set_named_target("home")
     group.go(wait=True)
