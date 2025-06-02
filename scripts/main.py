@@ -70,11 +70,13 @@ def renew_listener(pipeline, align, prev, threshold=0.05, stable_duration=1.0):
 
 def on_obstacle_changed(obstacle):
     global scene, current_execution_event
+
+    # Stop current execution
+    current_execution_event.set()
+
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] [Trigger] Responding immediately to obstacle change!")
     
-    # Stop current execution
-    current_execution_event.set()
     
     # Update obstacle
     scene.remove_world_object()
@@ -94,13 +96,15 @@ def wait_for_obstacle_stability(duration=3.0):
 
 def execute_task_segment(group, base, target_pos, optimizer):
     global current_execution_event, execution_state
+    was_interrupted = False  # Track if execution was interrupted by obstacle change
     
     while True:
-        # Wait for obstacle stability
-        print("Waiting for obstacle position to stabilize...")
-        if not wait_for_obstacle_stability(3.0):
-            print("Obstacle position changed during stability wait")
-            continue
+        if was_interrupted:
+            # Only wait for stability after an interruption
+            print("Waiting for obstacle position to stabilize...")
+            if not wait_for_obstacle_stability(3.0):
+                print("Obstacle position changed during stability wait")
+                continue
         
         # Plan new path
         print(f"Planning path to {target_pos}")
@@ -122,6 +126,7 @@ def execute_task_segment(group, base, target_pos, optimizer):
             
         if current_execution_event.is_set():
             print("Execution interrupted, replanning...")
+            was_interrupted = True  # Set interrupt flag
         else:
             print("Execution failed")
             return False
