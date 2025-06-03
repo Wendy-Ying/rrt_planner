@@ -163,7 +163,7 @@ def move_to_angles(base, target_angles, gripper_value=0.0, is_endpoint=False):
             errors = []
             for i in range(6):
                 # Calculate base speed from PID
-                base_speed = pids[i].control(target_angles[i], current_angles[i], i) * 2
+                base_speed = pids[i].control(target_angles[i], current_angles[i], i)
                 # Apply minimum speed threshold while maintaining direction
                 if abs(base_speed) > 0:
                     base_speed = np.sign(base_speed) * max(abs(base_speed), min_speed_threshold)

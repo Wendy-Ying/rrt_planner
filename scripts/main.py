@@ -181,7 +181,7 @@ def main():
 
                 # Move to goal
                 execution_state = "TO_GOAL"
-                success = execute_task_segment(group, base, [goal[0], goal[1]+0.03, 0.02], optimizer)
+                success = execute_task_segment(group, base, [goal[0]+0.01, goal[1]+0.03, 0.02], optimizer)
                 if success:
                     pid_angle_control.send_gripper_command(base, 0)
                     print("Successfully placed object at goal")
