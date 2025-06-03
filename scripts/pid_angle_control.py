@@ -129,12 +129,12 @@ def move_to_angles(base, target_angles, gripper_value=0.0, is_endpoint=False):
         min_speed_threshold = 0.5 
     else:
         pids = [
-            PIDController(Kp=2, Ki=0.0, Kd=0.1),  # Joint 1
-            PIDController(Kp=2, Ki=0.0, Kd=0.05), # Joint 2
-            PIDController(Kp=2, Ki=0.0, Kd=0.05), # Joint 3
-            PIDController(Kp=2, Ki=0.0, Kd=0.1), # Joint 4
-            PIDController(Kp=2, Ki=0.0, Kd=0.1), # Joint 5
-            PIDController(Kp=2, Ki=0.0, Kd=0.1)   # Joint 6
+            PIDController(Kp=1.5, Ki=0.0, Kd=0.2),  # Joint 1
+            PIDController(Kp=1.5, Ki=0.0, Kd=0.1), # Joint 2
+            PIDController(Kp=1.5, Ki=0.0, Kd=0.1), # Joint 3
+            PIDController(Kp=1.5, Ki=0.0, Kd=0.2), # Joint 4
+            PIDController(Kp=1.5, Ki=0.0, Kd=0.2), # Joint 5
+            PIDController(Kp=1.5, Ki=0.0, Kd=0.2)   # Joint 6
         ]
         error_threshold = 2.0 
         min_speed_threshold = 4.0  
@@ -147,7 +147,11 @@ def move_to_angles(base, target_angles, gripper_value=0.0, is_endpoint=False):
     try:
         # Control gripper
         # send_gripper_command(base, gripper_value)
-        
+
+        prev_speeds = [0.0] * 6
+        alpha = 0.2
+
+        # Control loop
         # Joint control loop
         while True:
             # Get current joint angles
@@ -161,10 +165,11 @@ def move_to_angles(base, target_angles, gripper_value=0.0, is_endpoint=False):
                 # Calculate base speed from PID
                 base_speed = pids[i].control(target_angles[i], current_angles[i], i) * 2
                 # Apply minimum speed threshold while maintaining direction
-                speed = base_speed
                 if abs(base_speed) > 0:
-                    speed = np.sign(base_speed) * max(abs(base_speed), min_speed_threshold)
-                speeds.append(speed)
+                    base_speed = np.sign(base_speed) * max(abs(base_speed), min_speed_threshold)
+                smoothed_speed = alpha * base_speed + (1 - alpha) * prev_speeds[i]
+                prev_speeds[i] = smoothed_speed
+                speeds.append(smoothed_speed)
                 errors.append(abs(calculate_angle_error(target_angles[i], current_angles[i], i)))
             
             # Send velocity commands

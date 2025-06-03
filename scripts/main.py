@@ -102,7 +102,7 @@ def execute_task_segment(group, base, target_pos, optimizer):
         if was_interrupted:
             # Only wait for stability after an interruption
             print("Waiting for obstacle position to stabilize...")
-            if not wait_for_obstacle_stability(3.0):
+            if not wait_for_obstacle_stability(1.0):
                 print("Obstacle position changed during stability wait")
                 continue
         
@@ -160,7 +160,7 @@ def main():
     rospy.sleep(1.0)
     add_obstacle(scene, obstacle[0], obstacle[1]+0.02, 0.01, 0.12, 0.12, 0.2)
 
-    optimizer = BSplineOptimizer(robot, degree=3, num_points=10)
+    optimizer = BSplineOptimizer(degree=3, num_points=10)
 
     t = threading.Thread(target=renew_listener, args=(pipeline, align, obstacle))
     t.start()
@@ -174,16 +174,16 @@ def main():
 
             # Move to object
             execution_state = "TO_OBJECT"
-            success = execute_task_segment(group, base, [obj[0], obj[1]+0.02, 0.03], optimizer)
+            success = execute_task_segment(group, base, [obj[0], obj[1]+0.04, 0.03], optimizer)
             if success:
                 pid_angle_control.send_gripper_command(base, 0.8)
                 print("Successfully picked up object")
 
                 # Move to goal
                 execution_state = "TO_GOAL"
-                success = execute_task_segment(group, base, [goal[0], goal[1], 0.02], optimizer)
+                success = execute_task_segment(group, base, [goal[0], goal[1]+0.03, 0.02], optimizer)
                 if success:
-                    pid_angle_control.send_gripper_command(base, 0.3)
+                    pid_angle_control.send_gripper_command(base, 0)
                     print("Successfully placed object at goal")
 
                     # Return home

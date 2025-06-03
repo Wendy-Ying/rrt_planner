@@ -7,6 +7,7 @@ from moveit_commander import MoveGroupCommander, PlanningSceneInterface
 from geometry_msgs.msg import PoseStamped
 from moveit_msgs.msg import Constraints, JointConstraint, PositionConstraint
 from shape_msgs.msg import SolidPrimitive
+from tf.transformations import quaternion_from_euler
 
 def init():
     moveit_commander.roscpp_initialize(sys.argv)
@@ -24,11 +25,8 @@ def init():
     group.set_max_velocity_scaling_factor(0.7)
     group.set_max_acceleration_scaling_factor(0.7)
 
-    limit_joint(group, "joint_1", target_position=0, tolerance_above=1, tolerance_below=0.2)
-    limit_joint(group, "joint_2", target_position=0, tolerance_above=0.3, tolerance_below=1.5)
-    limit_joint(group, "joint_3", target_position=1.75, tolerance_above=1.2, tolerance_below=1.6)
-
-    set_cartesian_bounds(group)
+    group.clear_path_constraints()
+    group.set_path_constraints(build_constraints())
 
     return group, scene, robot
 
@@ -49,6 +47,16 @@ def set_goal(group, x, y, z):
     pose_target.position.x = x
     pose_target.position.y = y
     pose_target.position.z = z
+
+    roll = np.deg2rad(8.3)
+    pitch = np.deg2rad(-172.7)
+    yaw = np.deg2rad(134.2)
+    q = quaternion_from_euler(roll, pitch, yaw)
+    pose_target.orientation.x = q[0]
+    pose_target.orientation.y = q[1]
+    pose_target.orientation.z = q[2]
+    pose_target.orientation.w = q[3]
+
     group.set_pose_target(pose_target)
     while not rospy.is_shutdown():
         success, trajectory, _, _ = group.plan()
@@ -113,34 +121,50 @@ def limit_joint(group, joint_name, target_position, tolerance_above=0.1, toleran
 
     constraints = Constraints()
     constraints.joint_constraints.append(constraint)
-    
+
+    group.clear_path_constraints()
     group.set_path_constraints(constraints)
 
-def set_cartesian_bounds(group):
+def build_constraints():
     constraints = Constraints()
-    
-    position_constraint = PositionConstraint()
-    position_constraint.header.frame_id = "base_link"
-    position_constraint.link_name = group.get_end_effector_link()
-    
+
+    joint_constraints = [
+        # ("joint_1", 0, 0.78, 0.7),
+        ("joint_2", 0, 0.5, 1.8),
+        ("joint_3", 2.6, 0.2, 2.8),
+    ]
+
+    for joint_name, target_position, tol_above, tol_below in joint_constraints:
+        jc = JointConstraint()
+        jc.joint_name = joint_name
+        jc.position = target_position
+        jc.tolerance_above = tol_above
+        jc.tolerance_below = tol_below
+        jc.weight = 1.0
+        constraints.joint_constraints.append(jc)
+
+    pc = PositionConstraint()
+    pc.header.frame_id = "base_link"
+    pc.link_name = "end_effector_link"
+    pc.weight = 1.0
+
     box = SolidPrimitive()
     box.type = SolidPrimitive.BOX
-    box.dimensions = [1.0, 0.8, 1.0]
-    
+    box.dimensions = [1.0, 0.9, 0.9]
+
     box_pose = PoseStamped()
     box_pose.header.frame_id = "base_link"
-    box_pose.pose.position.x = 0.25
-    box_pose.pose.position.y = 0.0
-    box_pose.pose.position.z = 0.3
     box_pose.pose.orientation.w = 1.0
-    
-    position_constraint.constraint_region.primitives.append(box)
-    position_constraint.constraint_region.primitive_poses.append(box_pose.pose)
-    position_constraint.weight = 1.0
-    
-    constraints.position_constraints.append(position_constraint)
-    
-    group.set_path_constraints(constraints)
+    box_pose.pose.position.x = 0.3
+    box_pose.pose.position.y = 0.1
+    box_pose.pose.position.z = 0.45
+
+    pc.constraint_region.primitives.append(box)
+    pc.constraint_region.primitive_poses.append(box_pose.pose)
+
+    constraints.position_constraints.append(pc)
+
+    return constraints
 
 def main():
     group, scene, robot = init()
