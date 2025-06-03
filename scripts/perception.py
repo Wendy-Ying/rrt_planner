@@ -78,6 +78,8 @@ def process_frame(color_image, depth_frame, mode='init'):
     #         marker_id = ids[i][0]
     #         if marker_id == 0:
     #             results.append((cx, cy, 'goal'))
+    #         elif marker_id == 1:
+    #             results.append((cx, cy, 'obstacle'))
     #         elif marker_id == 2:
     #             results.append((cx, cy, 'obj'))
 
@@ -156,7 +158,7 @@ if __name__ == "__main__":
             for (x, y, label) in detected_points:
                 cv2.circle(color_image, (x, y), 6, (0, 0, 255), -1)
                 cv2.putText(color_image, label, (x + 10, y - 10), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                 camera_cords = pixel_to_world(depth_frame, [x, y], depth_frame.get_distance(x, y))
                 world_coords = camera_to_world(np.array(camera_cords))
                 print(f"{label} detected at: world={world_coords}")
