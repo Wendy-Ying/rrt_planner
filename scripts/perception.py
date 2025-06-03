@@ -88,7 +88,7 @@ def process_frame(color_image, depth_frame, mode='init'):
                 goal = world_coords
             elif marker_id == 2:
                 obj = world_coords
-            elif marker_id == 3:
+            elif marker_id == 1:
                 obstacle = world_coords
     if mode == 'init':
         if obj is not None and goal is not None and obstacle is not None:
