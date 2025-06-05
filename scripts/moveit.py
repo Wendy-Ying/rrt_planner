@@ -70,46 +70,19 @@ def set_goal(group, x, y, z):
             print("Failed to plan")
             return None
 
-def go_home(group, mode="A"):
-    goal_init = np.array([0, 21, 150, 272, 320, 273]) / 180 * np.pi
-    goal_final = np.array([0, 343, 75, 0, 300, 0]) / 180 * np.pi
+def go_home(group):
     while not rospy.is_shutdown():
-        if mode == "A":
-            group.set_joint_value_target(goal_init)
-            success, trajectory, _, _ = group.plan()
-            if success:
-                print("Trajectory planned successfully")
-                joint_trajectory = []
-                for point in trajectory.joint_trajectory.points:
-                    joint_trajectory.append(list(point.positions))
-                return np.array(joint_trajectory)
-            else:
-                print("Failed to plan")
-                return None
-        if mode == "B":
-            group.set_joint_value_target(goal_final)
-            success, trajectory, _, _ = group.plan()
-            if success:
-                print("Trajectory planned successfully")
-                joint_trajectory = []
-                for point in trajectory.joint_trajectory.points:
-                    joint_trajectory.append(list(point.positions))
-                return np.array(joint_trajectory)
-            else:
-                print("Failed to plan")
-                return None
-        if mode == "C":
-            group.set_named_target("home")
-            success, trajectory, _, _ = group.plan()
-            if success:
-                print("Trajectory planned successfully")
-                joint_trajectory = []
-                for point in trajectory.joint_trajectory.points:
-                    joint_trajectory.append(list(point.positions))
-                return np.array(joint_trajectory)
-            else:
-                print("Failed to plan")
-                return None
+        group.set_named_target("home")
+        success, trajectory, _, _ = group.plan()
+        if success:
+            print("Trajectory planned successfully")
+            joint_trajectory = []
+            for point in trajectory.joint_trajectory.points:
+                joint_trajectory.append(list(point.positions))
+            return np.array(joint_trajectory)
+        else:
+            print("Failed to plan")
+            return None
 
 def limit_joint(group, joint_name, target_position, tolerance_above=0.1, tolerance_below=0.1, weight=1.0):
     constraint = JointConstraint()
@@ -129,7 +102,6 @@ def build_constraints():
     constraints = Constraints()
 
     joint_constraints = [
-        # ("joint_1", 0, 0.78, 0.7),
         ("joint_2", 0, 0.5, 1.8),
         ("joint_3", 2.6, 0.2, 2.8),
     ]

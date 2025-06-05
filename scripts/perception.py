@@ -108,7 +108,15 @@ def detect(pipeline, align):
         aligned = align.process(frames)
         depth_frame = aligned.get_depth_frame()
         color_frame = aligned.get_color_frame()
-
+        # pyrealsense filters
+        spat_filter = rs.spatial_filter()
+        temp_filter = rs.temporal_filter()
+        hole_filling = rs.hole_filling_filter()
+        depth_frame = spat_filter.process(depth_frame)
+        depth_frame = temp_filter.process(depth_frame)
+        depth_frame = hole_filling.process(depth_frame)
+        depth_frame = rs.depth_frame(depth_frame)
+        
         if not depth_frame or not color_frame:
             continue
 

@@ -95,7 +95,7 @@ def wait_for_obstacle_stability(duration=3.0):
     return True
 
 def execute_task_segment(group, base, target_pos, optimizer):
-    global current_execution_event, execution_state
+    global current_execution_event, execution_state, all_path
     was_interrupted = False  # Track if execution was interrupted by obstacle change
     
     while True:
@@ -115,6 +115,7 @@ def execute_task_segment(group, base, target_pos, optimizer):
             
         # Optimize path
         smooth_path = optimizer.optimize(path)
+        all_path = np.vstack((all_path, smooth_path)) if len(all_path)!=0 else smooth_path
         
         # Execute path with interruption checking
         current_execution_event.clear()
@@ -132,7 +133,7 @@ def execute_task_segment(group, base, target_pos, optimizer):
             return False
 
 def main():
-    global obstacle, scene, execution_state
+    global obstacle, scene, execution_state, robot, all_path
     pipeline, align = init_realsense()
     
     joint_limits = np.array([(205, 150), (205, 150), (210, 150), (210, 145), (215, 140), (210, 150)]) / 180 * np.pi
@@ -165,6 +166,8 @@ def main():
     t = threading.Thread(target=renew_listener, args=(pipeline, align, obstacle))
     t.start()
 
+    all_path = []
+
     args = utilities.parseConnectionArguments()
 
     try:
@@ -188,9 +191,10 @@ def main():
 
                     # Return home
                     execution_state = "TO_HOME"
-                    path = go_home(group, mode="C")
+                    path = go_home(group)
                     if path is not None:
                         smooth_path = optimizer.optimize(path)
+                        all_path = np.vstack((all_path, smooth_path)) if len(all_path)!=0 else smooth_path
                         current_execution_event.clear()
                         success = pid_angle_control.execute_path(base, smooth_path, current_execution_event)
                         if success:
@@ -203,6 +207,8 @@ def main():
                     print("Failed to reach goal position")
             else:
                 print("Failed to reach object")
+    
+        plot_cartesian_trajectory(all_path, robot)
     
     except KeyboardInterrupt:
         print("Script interrupted by user")

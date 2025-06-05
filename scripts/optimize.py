@@ -7,7 +7,7 @@ class BSplineOptimizer:
         self.num_points = num_points
 
     def optimize(self, path):
-        path = np.array(path)  # shape: (N, 6)
+        path = np.array(path)
         if path.ndim != 2:
             raise ValueError("Expected input path shape (N, 6)")
         
